@@ -2,19 +2,29 @@ import {
   canonicalCategories,
   type ConceptRecord,
   type ModelClasses,
-} from '../src/features/invoices/domain/classificationModel'
+} from '../../src/features/invoices/domain/classificationModel'
 import type {
   ImportRecord,
   InvoiceRecord,
   ModelPackageRecord,
-} from '../src/features/invoices/domain/persistenceRecords'
-import { classifyInvoice } from '../src/features/invoices/domain/invoiceRules'
-import type { InvoiceRecalculator } from '../src/features/invoices/services/invoiceService'
+} from '../../src/features/invoices/domain/persistenceRecords'
+import { classifyInvoice } from '../../src/features/invoices/domain/invoiceRules'
+import type { InvoiceRecalculator } from '../../src/features/invoices/services/invoiceService'
 import {
   CoordinationFailure,
   type TabCoordinator,
   type TabCoordinationEvent,
-} from '../src/app/tabCoordination'
+} from '../../src/app/tabCoordination'
+
+export function accessKeyFixture(identity: string): string {
+  let value = 0n
+
+  for (const character of identity) {
+    value = (value * 131n + BigInt(character.codePointAt(0)!)) % 10n ** 49n
+  }
+
+  return value.toString().padStart(49, '0')
+}
 
 export const createdAt = '2026-11-03T12:00:00.000Z'
 
@@ -78,6 +88,9 @@ export function storageInvoice(
 
   return {
     schemaVersion: 1,
+    accessKey: accessKeyFixture(
+      `${source.id}:${overrides.id ?? 'invoice-1'}:${overrides.entryIndex ?? 0}`,
+    ),
     id: 'invoice-1',
     importId: source.id,
     entryIndex: 0,

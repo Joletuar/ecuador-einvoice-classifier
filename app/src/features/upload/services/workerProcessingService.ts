@@ -58,6 +58,7 @@ interface FileContext {
 
 interface SourceResult {
   saved: Map<string, Invoice>
+  duplicates: Map<number, string>
   issues: Set<string>
   counts?: SourceCounts
   error?: WorkerError | null
@@ -145,7 +146,6 @@ export function createWorkerProcessingService(options: {
     const files = new Map<string, FileProcessingResult>()
     const results = new Map<string, SourceResult>()
     const active = new Map<string, FileContext>()
-    const seen = new Set(session.sourceNames)
     const sources: WorkerSource[] = []
 
     let completedXml = 0
@@ -156,22 +156,6 @@ export function createWorkerProcessingService(options: {
     for (const input of inputs) {
       const prior = contexts.get(input.id)
       const retry = prior?.file === input.file && prior.pending
-
-      if (!retry && seen.has(input.file.name)) {
-        const duplicate: FileProcessingResult = {
-          id: input.id,
-          name: input.file.name,
-          status: FileResultStatus.Duplicate,
-          duplicateFileName: input.file.name,
-          message: 'Ya existe un archivo con este nombre.',
-        }
-
-        files.set(input.id, duplicate)
-        hooks.onFileResult(duplicate)
-        continue
-      }
-
-      seen.add(input.file.name)
 
       const context = retry
         ? prior
@@ -196,6 +180,7 @@ export function createWorkerProcessingService(options: {
       active.set(input.id, context)
       results.set(input.id, {
         saved: new Map(),
+        duplicates: new Map(),
         issues: new Set(),
         emitted: new Map(),
         initialSettled: context.settled.size,
@@ -227,8 +212,6 @@ export function createWorkerProcessingService(options: {
       context.attempted = true
     }
 
-    const duplicateFiles = files.size
-
     function publishProgress(id: string, stage: string) {
       const context = active.get(id)!
       const result = results.get(id)!
@@ -238,7 +221,7 @@ export function createWorkerProcessingService(options: {
       result.completedXml = settled
       hooks.onProgress?.({
         name: context.file.name,
-        completed: duplicateFiles + completedSources,
+        completed: completedSources,
         total: inputs.length,
         stage,
         xml: result.counts ?? {
@@ -269,6 +252,9 @@ export function createWorkerProcessingService(options: {
         saved.length
           ? `${saved.length} ${savedLabel}.`
           : 'No se guardaron facturas nuevas.',
+        result.duplicates.size
+          ? `${result.duplicates.size} ${result.duplicates.size === 1 ? 'factura ya guardada, identificada' : 'facturas ya guardadas, identificadas'} por su clave de acceso.`
+          : '',
         ...issues,
         pending
           ? 'Quedan entradas pendientes. Puedes volver a Procesar con esta selección.'
@@ -285,7 +271,12 @@ export function createWorkerProcessingService(options: {
         retryable: pending,
         ...(saved.length
           ? { status: FileResultStatus.Added, invoices: saved }
-          : { status: FileResultStatus.Error }),
+          : result.duplicates.size && !issues.length
+            ? {
+                status: FileResultStatus.Duplicate,
+                invoiceIds: [...new Set(result.duplicates.values())],
+              }
+            : { status: FileResultStatus.Error }),
       }
 
       files.set(id, file)
@@ -442,9 +433,19 @@ export function createWorkerProcessingService(options: {
                 context.settled.set(event.entry.entryIndex, {
                   entryIndex: event.entry.entryIndex,
                   entryPath: event.entry.entryPath,
-                  status: SourceEntryStatus.Saved,
+                  status:
+                    committed.value.status === CommitStatus.Duplicate
+                      ? SourceEntryStatus.Duplicate
+                      : SourceEntryStatus.Saved,
                   invoiceId: committed.value.invoice.id,
                 })
+
+                if (committed.value.status === CommitStatus.Duplicate) {
+                  result.duplicates.set(
+                    event.entry.entryIndex,
+                    committed.value.invoice.id,
+                  )
+                }
 
                 if (committed.value.status === SourceEntryStatus.Saved) {
                   result.saved.set(

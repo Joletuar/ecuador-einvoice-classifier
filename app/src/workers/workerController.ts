@@ -156,6 +156,7 @@ export function createWorkerController(
       const now = new Date().toISOString()
       const invoice = {
         schemaVersion: 1,
+        accessKey: parsed.accessKey,
         id,
         importId: source.source.id,
         entryIndex: entry.entryIndex,
@@ -277,7 +278,7 @@ export function createWorkerController(
       counts.savedXml++
     }
 
-    if (!result.ok || !saved) {
+    if ((!result.ok || !saved) && outcome.status !== CommitStatus.Duplicate) {
       counts.failedXml++
     }
 

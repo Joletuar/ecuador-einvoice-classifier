@@ -39,7 +39,10 @@ export interface InvoiceCommit {
 }
 
 export interface CommittedInvoice {
-  status: typeof CommitStatus.Saved | typeof CommitStatus.AlreadySaved
+  status:
+    | typeof CommitStatus.Saved
+    | typeof CommitStatus.AlreadySaved
+    | typeof CommitStatus.Duplicate
   invoice: Invoice
   revision: number
   usage: StorageUsage

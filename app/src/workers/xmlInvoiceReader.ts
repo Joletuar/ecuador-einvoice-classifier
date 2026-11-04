@@ -26,6 +26,7 @@ export interface ExtractedConcept {
 }
 
 export interface ExtractedInvoice {
+  readonly accessKey: string
   readonly issuer: InvoiceRecord['issuer']
   readonly buyer: NonNullable<InvoiceRecord['buyer']>
   readonly number: InvoiceRecord['number']
@@ -244,6 +245,16 @@ function extract(raw: RawInvoice, invoiceId: string): ExtractedInvoice {
 
     return value
   }
+  const accessKey = field('infoTributaria/claveAcceso')?.trim()
+
+  if (!accessKey || !/^\d{49}$/.test(accessKey)) {
+    throw failure(
+      WorkerErrorCode.InvalidXml,
+      WorkerStage.Xml,
+      'La factura no contiene una clave de acceso de 49 dígitos válida.',
+    )
+  }
+
   const date = dateValue(field('infoFactura/fechaEmision'))
 
   if (!date.iso) {
@@ -314,6 +325,7 @@ function extract(raw: RawInvoice, invoiceId: string): ExtractedInvoice {
   })
 
   return {
+    accessKey,
     issuer: {
       legalName: presentation(
         'infoTributaria/razonSocial',

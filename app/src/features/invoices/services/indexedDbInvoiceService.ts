@@ -37,7 +37,6 @@ import {
   cloneRuleResult,
   cloneIssue,
   fields,
-  plain,
   validateConceptSelection,
   validateImportRecord,
   validateInvoiceRecord,
@@ -75,6 +74,7 @@ interface InvoiceDatabase extends DBSchema {
     key: string
     value: InvoiceRecord
     indexes: {
+      byAccessKey: string
       byImport: string
       byImportEntry: [string, number]
       byModelPackage: string
@@ -99,16 +99,6 @@ class StorageFailure extends Error {
   ) {
     super(message)
     this.name = 'StorageFailure'
-  }
-}
-
-export class MigrationError extends StorageFailure {
-  constructor() {
-    super(
-      StorageErrorCode.MigrationRequired,
-      'La base anterior contiene facturas que no pueden migrarse conservando su modelo y probabilidades. Se ha conservado intacta.',
-    )
-    this.name = 'MigrationError'
   }
 }
 
@@ -146,64 +136,12 @@ function same(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-// Las categorías corregidas también pueden pertenecer a la antigua demo. Para
-// reconocer esos datos se comprueban sus identificadores y su procedencia.
-function simulatedInvoice(
-  invoice: unknown,
-  source: Record<string, unknown>,
-): boolean {
-  if (
-    !plain(invoice) ||
-    typeof source.id !== 'string' ||
-    typeof source.name !== 'string' ||
-    !Array.isArray(invoice.concepts) ||
-    invoice.concepts.length !== 1
-  ) {
-    return false
-  }
-
-  const concept = invoice.concepts[0]
-
-  if (
-    !plain(concept) ||
-    invoice.id !== `simulated:${source.id}` ||
-    concept.id !== `${invoice.id}:concept`
-  ) {
-    return false
-  }
-
-  const current =
-    invoice.issuer === source.name &&
-    invoice.number === `FAC-${source.id.slice(0, 8)}` &&
-    concept.name === `Detalle de ${source.name}`
-  const original =
-    invoice.issuer === `Simulación — ${source.name}` &&
-    [`SIM-${source.id}`, `SIM-${source.id.slice(0, 8)}`].includes(
-      String(invoice.number),
-    ) &&
-    concept.name === `Concepto simulado de ${source.name}`
-
-  return current || original
-}
-
-function removableLegacyOrigin(value: unknown): boolean {
-  return (
-    plain(value) &&
-    typeof value.id === 'string' &&
-    value.id.length > 0 &&
-    typeof value.name === 'string' &&
-    value.name.length > 0 &&
-    Array.isArray(value.invoices) &&
-    value.invoices.every((invoice) => simulatedInvoice(invoice, value))
-  )
-}
-
 interface State {
   imports: Map<string, ImportRecord>
   invoices: Map<string, InvoiceRecord>
   packages: Map<string, ModelPackageRecord>
   entries: Map<string, Map<number, string>>
-  names: Map<string, string>
+  accessKeys: Map<string, string>
   usage: StorageUsage
 }
 
@@ -241,7 +179,9 @@ function stateFrom(records: LocalPersistenceSnapshot): State {
     invoices: new Map(invoices.map((invoice) => [invoice.id, invoice])),
     packages: new Map(packages.map((pack) => [pack.id, pack])),
     entries,
-    names: new Map(imports.map((source) => [source.name, source.id])),
+    accessKeys: new Map(
+      invoices.map((invoice) => [invoice.accessKey, invoice.id]),
+    ),
     usage: persistenceUsage({ imports, invoices, modelPackages: packages }),
   }
 }
@@ -302,18 +242,17 @@ export function createIndexedDbInvoiceService(
     }
 
     if (!connection) {
-      let migrationFailure: MigrationError | undefined
       let abandoned = false
       let rejectBlocked!: (error: StorageFailure) => void
       const blocked = new Promise<never>((_resolve, reject) => {
         rejectBlocked = reject
       })
-      const opening = openDB<InvoiceDatabase>(databaseName, 3, {
-        async upgrade(db, previousVersion, _nextVersion, transaction) {
+      const opening = openDB<InvoiceDatabase>(databaseName, 1, {
+        upgrade(db, _previousVersion, _nextVersion, transaction) {
           void transaction.done.catch(() => undefined)
 
           // La apertura de la base puede continuar después de soltar el turno
-          // de escritura. En ese caso se cancela la migración para evitar
+          // de escritura. En ese caso se cancela la creación para evitar
           // cambios sin el bloqueo.
           if (abandoned || disposed) {
             transaction.abort()
@@ -321,59 +260,34 @@ export function createIndexedDbInvoiceService(
             return
           }
 
-          try {
-            if (previousVersion !== 0) {
-              if (
-                db.objectStoreNames.length !== 1 ||
-                !db.objectStoreNames.contains(InvoiceStoreName.Imports) ||
-                previousVersion > 2
-              ) {
-                throw new MigrationError()
-              }
+          const imports = db.createObjectStore(InvoiceStoreName.Imports, {
+            keyPath: 'id',
+          })
 
-              const legacy: unknown[] = await transaction
-                .objectStore(InvoiceStoreName.Imports)
-                .getAll()
+          imports.createIndex(InvoiceIndexName.ByName, 'name')
 
-              if (!legacy.every(removableLegacyOrigin)) {
-                throw new MigrationError()
-              }
+          const invoices = db.createObjectStore(InvoiceStoreName.Invoices, {
+            keyPath: 'id',
+          })
 
-              db.deleteObjectStore(InvoiceStoreName.Imports)
-            }
-
-            const imports = db.createObjectStore(InvoiceStoreName.Imports, {
-              keyPath: 'id',
-            })
-
-            imports.createIndex(InvoiceIndexName.ByName, 'name', {
+          invoices.createIndex(InvoiceIndexName.ByAccessKey, 'accessKey', {
+            unique: true,
+          })
+          invoices.createIndex(InvoiceIndexName.ByImport, 'importId')
+          invoices.createIndex(
+            InvoiceIndexName.ByImportEntry,
+            ['importId', 'entryIndex'],
+            {
               unique: true,
-            })
-
-            const invoices = db.createObjectStore(InvoiceStoreName.Invoices, {
-              keyPath: 'id',
-            })
-
-            invoices.createIndex(InvoiceIndexName.ByImport, 'importId')
-            invoices.createIndex(
-              InvoiceIndexName.ByImportEntry,
-              ['importId', 'entryIndex'],
-              {
-                unique: true,
-              },
-            )
-            invoices.createIndex(
-              InvoiceIndexName.ByModelPackage,
-              'modelPackageId',
-            )
-            db.createObjectStore(InvoiceStoreName.ModelPackages, {
-              keyPath: 'id',
-            })
-          } catch (error) {
-            migrationFailure =
-              error instanceof MigrationError ? error : new MigrationError()
-            transaction.abort()
-          }
+            },
+          )
+          invoices.createIndex(
+            InvoiceIndexName.ByModelPackage,
+            'modelPackageId',
+          )
+          db.createObjectStore(InvoiceStoreName.ModelPackages, {
+            keyPath: 'id',
+          })
         },
 
         blocked() {
@@ -385,8 +299,8 @@ export function createIndexedDbInvoiceService(
 
           rejectBlocked(
             new StorageFailure(
-              StorageErrorCode.UpgradeBlocked,
-              'Otra pestaña mantiene abierta la base anterior. Ciérrala y vuelve a intentar.',
+              StorageErrorCode.OpeningBlocked,
+              'Otra pestaña impide abrir el almacenamiento. Ciérrala y vuelve a intentar.',
             ),
           )
         },
@@ -405,7 +319,7 @@ export function createIndexedDbInvoiceService(
             db.close()
 
             throw new StorageFailure(
-              StorageErrorCode.UpgradeBlocked,
+              StorageErrorCode.OpeningBlocked,
               'La apertura de la base quedó interrumpida. Vuelve a intentar.',
             )
           }
@@ -413,10 +327,6 @@ export function createIndexedDbInvoiceService(
           return db
         })
         .catch((error: unknown) => {
-          if (migrationFailure) {
-            throw migrationFailure
-          }
-
           if (connection === attempt) {
             connection = undefined
           }
@@ -442,7 +352,7 @@ export function createIndexedDbInvoiceService(
 
       return db
     } catch (error) {
-      if (error instanceof MigrationError || error instanceof StorageFailure) {
+      if (error instanceof StorageFailure) {
         throw error
       }
 
@@ -526,6 +436,23 @@ export function createIndexedDbInvoiceService(
       }
     }
 
+    const duplicateId = state.accessKeys.get(input.invoice.accessKey)
+
+    if (duplicateId) {
+      const duplicate = state.invoices.get(duplicateId)!
+
+      return {
+        status: CommitStatus.Duplicate,
+        invoice: projectInvoice(
+          duplicate,
+          state.imports.get(duplicate.importId)!,
+          state.packages.get(duplicate.modelPackageId)!,
+        ),
+        revision: duplicate.revision,
+        usage: { ...state.usage },
+      }
+    }
+
     if (
       input.invoice.revision !== 1 ||
       input.invoice.classification.selection.mode !== SelectionMode.Automatic ||
@@ -554,15 +481,6 @@ export function createIndexedDbInvoiceService(
       throw new StorageFailure(
         StorageErrorCode.Conflict,
         'El identificador de factura ya pertenece a otra entrada.',
-      )
-    }
-
-    const sameName = state.names.get(input.source.name)
-
-    if (sameName && sameName !== input.source.id) {
-      throw new StorageFailure(
-        StorageErrorCode.DuplicateSource,
-        'Ya hay facturas guardadas con ese nombre de archivo.',
       )
     }
 
@@ -614,9 +532,9 @@ export function createIndexedDbInvoiceService(
     }
 
     state.imports.set(input.source.id, input.source)
-    state.names.set(input.source.name, input.source.id)
     state.packages.set(input.modelPackage.id, input.modelPackage)
     state.invoices.set(input.invoice.id, input.invoice)
+    state.accessKeys.set(input.invoice.accessKey, input.invoice.id)
 
     const indices =
       state.entries.get(input.source.id) ?? new Map<number, string>()
@@ -844,7 +762,9 @@ export function createIndexedDbInvoiceService(
         }
         const session: InvoiceImportSession = {
           sourceIds: Object.freeze([...state.imports.keys()]),
-          sourceNames: Object.freeze([...state.names.keys()]),
+          sourceNames: Object.freeze(
+            [...state.imports.values()].map((source) => source.name),
+          ),
 
           commit(input) {
             try {
@@ -967,10 +887,7 @@ export function createIndexedDbInvoiceService(
         indices.delete(invoice.entryIndex)
 
         if (removeSource) {
-          const source = state.imports.get(invoice.importId)!
-
           state.imports.delete(invoice.importId)
-          state.names.delete(source.name)
           state.entries.delete(invoice.importId)
         }
 

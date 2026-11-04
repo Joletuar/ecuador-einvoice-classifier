@@ -29,6 +29,7 @@ const example = {
   invoices: [
     {
       schemaVersion: 1,
+      accessKey: '0'.repeat(49),
       id: 'invoice-example-01',
       importId: 'import-example-01',
       entryIndex: 0,

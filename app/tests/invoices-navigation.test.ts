@@ -14,7 +14,7 @@ import type { OfflineService } from '../src/features/offline/services/offlineSer
 import type { Result } from '../src/shared/lib/result'
 import { toast } from 'vue-sonner'
 import { categories } from '../src/features/invoices/domain/categoryModel'
-import { testCoordinator, testRecalculate } from './storageFixtures'
+import { testCoordinator, testRecalculate } from './fixtures/storageFixtures'
 import {
   invoiceFixture,
   invoiceDataFixture,

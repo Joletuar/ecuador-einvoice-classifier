@@ -34,10 +34,6 @@ export type FileProcessingResult = FileProcessingResultBase &
         status: typeof FileResultStatus.Duplicate
         invoiceIds: string[]
       }
-    | {
-        status: typeof FileResultStatus.Duplicate
-        duplicateFileName: string
-      }
     // Un resultado solo se puede reintentar si se confirmó que no se guardó. Si
     // la escritura es incierta, el lote debe comprobarla antes de ofrecer otro
     // intento.

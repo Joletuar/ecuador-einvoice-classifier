@@ -32,7 +32,7 @@ export const modelPackage: ModelPackageRecord = {
 export const directXml = (
   details = '<detalle><descripcion>  ARROZ &amp; café  </descripcion><precioTotalSinImpuesto>10.00</precioTotalSinImpuesto></detalle>',
 ) =>
-  `<factura><infoTributaria><razonSocial>Emisor ficticio</razonSocial><nombreComercial>Comercio</nombreComercial><estab>001</estab><ptoEmi>002</ptoEmi><secuencial>000000123</secuencial></infoTributaria><infoFactura><fechaEmision>29/02/2024</fechaEmision><moneda>USD</moneda><importeTotal>11.50</importeTotal></infoFactura><detalles>${details}</detalles></factura>`
+  `<factura><infoTributaria><claveAcceso>${'0'.repeat(48)}1</claveAcceso><razonSocial>Emisor ficticio</razonSocial><nombreComercial>Comercio</nombreComercial><estab>001</estab><ptoEmi>002</ptoEmi><secuencial>000000123</secuencial></infoTributaria><infoFactura><fechaEmision>29/02/2024</fechaEmision><moneda>USD</moneda><importeTotal>11.50</importeTotal></infoFactura><detalles>${details}</detalles></factura>`
 
 export async function* encoded(text: string, chunkBytes = 97) {
   const bytes = new TextEncoder().encode(text)

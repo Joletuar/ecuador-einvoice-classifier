@@ -79,6 +79,7 @@ export type WorkerErrorCode =
 export const CommitStatus = {
   Saved: 'saved',
   AlreadySaved: 'already_saved',
+  Duplicate: 'duplicate',
   Rejected: 'rejected',
   Uncertain: 'uncertain',
 } as const
@@ -88,6 +89,7 @@ export type CommitStatus = (typeof CommitStatus)[keyof typeof CommitStatus]
 export const SourceEntryStatus = {
   Saved: 'saved',
   PermanentFailure: 'permanent_failure',
+  Duplicate: 'duplicate',
 } as const
 
 export type SourceEntryStatus =
@@ -143,7 +145,8 @@ export type SourceEntryIdentity = Pick<
 export type SettledSourceEntry = SourceEntryIdentity &
   (
     | {
-        readonly status: typeof SourceEntryStatus.Saved
+        readonly status:
+          typeof SourceEntryStatus.Saved | typeof SourceEntryStatus.Duplicate
         readonly invoiceId: string
       }
     | { readonly status: typeof SourceEntryStatus.PermanentFailure }
@@ -232,7 +235,9 @@ export type InvoiceResult =
 export type CommitOutcome =
   | {
       readonly status:
-        typeof CommitStatus.Saved | typeof CommitStatus.AlreadySaved
+        | typeof CommitStatus.Saved
+        | typeof CommitStatus.AlreadySaved
+        | typeof CommitStatus.Duplicate
       readonly invoiceId: string
       readonly revision: number
     }

@@ -6,7 +6,6 @@ import {
 } from '../src/features/upload/model/processingLedger'
 import {
   reconcileSelection,
-  planProcessingFiles,
   validateSelection,
   type SelectedFile,
 } from '../src/features/upload/model/selection'
@@ -54,17 +53,6 @@ describe('selection admission', () => {
 
     Object.defineProperty(file, 'size', { value: Number.MAX_SAFE_INTEGER })
     expect(validateSelection(0, [file], 1, false).ok).toBe(true)
-  })
-  it('plans literal same-name skips without changing the source Files', () => {
-    const first = input('a', 'invoice.xml')
-    const duplicate = input('b', 'invoice.xml')
-    const otherCase = input('c', 'Invoice.xml')
-    const plan = planProcessingFiles([first, duplicate, otherCase], [])
-
-    expect(plan.pending).toEqual([first, otherCase])
-    expect(plan.duplicates).toMatchObject([
-      { id: 'b', duplicateFileName: 'invoice.xml' },
-    ])
   })
 })
 

@@ -16,7 +16,7 @@ import type { InvoiceRecord } from '../../src/features/invoices/domain/persisten
 import type { InvoiceData } from '../../src/features/invoices/domain/storageModel'
 import { cloneInvoice } from '../../src/features/invoices/domain/invoicePayload'
 import { projectInvoice } from '../../src/features/invoices/domain/invoiceProjection'
-import { storagePackage } from '../storageFixtures'
+import { storagePackage, accessKeyFixture } from './storageFixtures'
 
 export const canonicalPackage = storagePackage()
 
@@ -64,6 +64,7 @@ export function invoiceCommitFixture(
     modelPackage,
     invoice: {
       schemaVersion: 1,
+      accessKey: accessKeyFixture(overrides.id ?? 'invoice-1'),
       id: 'invoice-1',
       importId: 'source-invoice-1',
       entryIndex: 0,

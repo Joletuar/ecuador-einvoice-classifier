@@ -164,9 +164,7 @@ export function useCategoryDraft(isInteractionBlocked: () => boolean) {
           toast.success('Categoría guardada.')
         }
       } else {
-        const stale =
-          result.code === StorageErrorCode.Conflict ||
-          result.code === StorageErrorCode.LegacyConflict
+        const stale = result.code === StorageErrorCode.Conflict
 
         if (stale) {
           await store.refresh()

@@ -41,6 +41,10 @@ La aplicación utiliza las siguientes variables de entorno, que deben contener v
 3. Revisa los resultados del procesamiento y accede a **Mis facturas** para consultar los comprobantes.
 4. Para modificar una categoría, selecciona la opción correspondiente y confirma con **Guardar** o descarta el cambio mediante **Cancelar**.
 
+La aplicación reconoce las facturas repetidas por la **clave de acceso del XML**, tanto en los datos guardados como dentro del lote, incluidos los XML de un ZIP. Los nombres de archivo se conservan para identificarlos: dos archivos con el mismo nombre pueden contener facturas distintas y renombrar una factura no permite guardarla dos veces. En un ZIP con facturas nuevas y repetidas, se guardan únicamente las nuevas. Una clave ausente o que no tenga 49 dígitos se informa como error; esta comprobación no valida la autorización tributaria.
+
+Las facturas se guardan en la base local `facturas-locales`, con un único esquema inicial que exige la clave de acceso. Los resultados permanecen disponibles al recargar la aplicación en el mismo navegador.
+
 ## Compilación y pruebas de producción
 
 Desde el directorio `app/`, ejecuta:

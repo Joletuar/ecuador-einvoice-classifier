@@ -52,6 +52,33 @@ describe('Worker XML extraction', () => {
     },
   )
 
+  it.each(['', ' ', '123', 'x'.repeat(49), '1'.repeat(50)])(
+    'rejects missing or malformed access key: %s',
+    async (key) => {
+      const xml = directXml().replace(
+        /<claveAcceso>.*?<\/claveAcceso>/,
+        key ? `<claveAcceso>${key}</claveAcceso>` : '',
+      )
+
+      await expect(
+        readInvoiceXml(encoded(xml), 'invoice', limits, immediateControl),
+      ).rejects.toThrow('clave de acceso')
+    },
+  )
+
+  it('trims the access key without losing leading zeros', async () => {
+    const key = '0'.repeat(48) + '1'
+    const xml = directXml().replace(
+      `<claveAcceso>${key}</claveAcceso>`,
+      `<claveAcceso> ${key} </claveAcceso>`,
+    )
+
+    expect(
+      (await readInvoiceXml(encoded(xml), 'invoice', limits, immediateControl))
+        .accessKey,
+    ).toBe(key)
+  })
+
   it('keeps missing and blank optional identities unavailable without adding issues', async () => {
     const missing = await readInvoiceXml(
       encoded(directXml()),
@@ -152,7 +179,7 @@ describe('Worker XML extraction', () => {
   it('keeps classifiable concepts when presentation data is missing or invalid', async () => {
     const invoice = await readInvoiceXml(
       encoded(
-        '<factura><infoFactura><fechaEmision>31/02/2024</fechaEmision><moneda>DOL</moneda></infoFactura><detalles><detalle><descripcion>ARROZ</descripcion></detalle></detalles></factura>',
+        '<factura><infoTributaria><claveAcceso>0000000000000000000000000000000000000000000000001</claveAcceso></infoTributaria><infoFactura><fechaEmision>31/02/2024</fechaEmision><moneda>DOL</moneda></infoFactura><detalles><detalle><descripcion>ARROZ</descripcion></detalle></detalles></factura>',
       ),
       'invoice',
       limits,

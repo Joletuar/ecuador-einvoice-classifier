@@ -17,6 +17,7 @@ export type InvoiceStoreName =
 
 export const InvoiceIndexName = {
   ByName: 'byName',
+  ByAccessKey: 'byAccessKey',
   ByImport: 'byImport',
   ByImportEntry: 'byImportEntry',
   ByModelPackage: 'byModelPackage',
@@ -42,6 +43,7 @@ export interface ImportRecord {
 }
 
 export interface InvoiceRecord {
+  readonly accessKey: string
   readonly schemaVersion: 1
   readonly id: string
   readonly importId: string

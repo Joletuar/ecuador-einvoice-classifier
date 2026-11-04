@@ -30,7 +30,7 @@ import {
   storageSource,
   testCoordinator,
   testRecalculate,
-} from './storageFixtures'
+} from './fixtures/storageFixtures'
 
 const services: InvoiceService[] = []
 const names: string[] = []
@@ -112,58 +112,6 @@ async function records(name: string): Promise<LocalPersistenceSnapshot> {
   return { imports, invoices, modelPackages }
 }
 
-async function legacy(name: string, imports: unknown[]) {
-  const db = await openDB(name, 2, {
-    upgrade(db) {
-      db.createObjectStore('imports', { keyPath: 'id' })
-    },
-  })
-
-  const tx = db.transaction('imports', 'readwrite')
-
-  for (const record of imports) {
-    await tx.store.add(record)
-  }
-
-  await tx.done
-
-  db.close()
-}
-
-function legacySim() {
-  const id = 'old-origin'
-  const name = 'old.xml'
-
-  return {
-    id,
-    name,
-    type: 'application/xml',
-    lastModified: 0,
-    originalBytes: 100,
-    invoices: [
-      {
-        id: `simulated:${id}`,
-        issuer: name,
-        number: `FAC-${id.slice(0, 8)}`,
-        date: '2026-11-03',
-        principal: 'Salud',
-        originalPrincipal: 'Sin clasificar',
-        principalMode: 'manual',
-        total: 1000,
-        concepts: [
-          {
-            id: `simulated:${id}:concept`,
-            name: `Detalle de ${name}`,
-            cents: 1000,
-            original: 'Sin clasificar',
-            category: 'Salud',
-          },
-        ],
-      },
-    ],
-  }
-}
-
 afterEach(async () => {
   vi.restoreAllMocks()
 
@@ -177,6 +125,38 @@ afterEach(async () => {
 })
 
 describe('canonical persistence', () => {
+  it('uses the current database namespace and retains real imports when reopened', async () => {
+    const name = 'facturas-locales'
+
+    names.push(name)
+
+    const service = createIndexedDbInvoiceService(
+      { maxFiles: 100, maxTotalBytes: 1_000_000 },
+      { coordinator: testCoordinator() },
+    )
+
+    services.push(service)
+    expect((await read(service)).invoices).toEqual([])
+    expect((await append(service)).ok).toBe(true)
+    service.dispose?.()
+
+    const reopened = createIndexedDbInvoiceService(
+      { maxFiles: 100, maxTotalBytes: 1_000_000 },
+      { coordinator: testCoordinator() },
+    )
+
+    services.push(reopened)
+    expect((await read(reopened)).invoices).toHaveLength(1)
+
+    const db = await openDB(name)
+
+    expect(db.version).toBe(1)
+    expect((await db.getAll('invoices'))[0].accessKey).toBe(
+      payload().invoice.accessKey,
+    )
+    db.close()
+  })
+
   it('preserves buyer identity and issuer RUC through DB reload and category edits', async () => {
     const name = databaseName()
     const service = adapter({ databaseName: name })
@@ -241,7 +221,7 @@ describe('canonical persistence', () => {
     })
   })
 
-  it('accepts older absent metadata without adding canonical keys or changing its bytes', async () => {
+  it('accepts absent optional identity fields without changing canonical bytes', async () => {
     const name = databaseName()
     const service = adapter({ databaseName: name })
     const invoice = storageInvoice()
@@ -276,7 +256,7 @@ describe('canonical persistence', () => {
     ).toBe(false)
   })
 
-  it('creates exactly three v3 stores and the declared unique indexes', async () => {
+  it('creates the current schema directly with three stores and the declared unique indexes', async () => {
     const name = databaseName()
     const service = adapter({ databaseName: name })
 
@@ -284,7 +264,7 @@ describe('canonical persistence', () => {
 
     const db = await openDB(name)
 
-    expect(db.version).toBe(3)
+    expect(db.version).toBe(1)
     expect([...db.objectStoreNames]).toEqual([
       'imports',
       'invoices',
@@ -293,9 +273,11 @@ describe('canonical persistence', () => {
 
     const tx = db.transaction(['imports', 'invoices'])
 
-    expect(tx.objectStore('imports').index('byName').unique).toBe(true)
+    expect(tx.objectStore('imports').index('byName').unique).toBe(false)
+    expect(tx.objectStore('invoices').index('byAccessKey').unique).toBe(true)
     expect(tx.objectStore('invoices').index('byImportEntry').unique).toBe(true)
     expect([...tx.objectStore('invoices').indexNames]).toEqual([
+      'byAccessKey',
       'byImport',
       'byImportEntry',
       'byModelPackage',
@@ -447,7 +429,7 @@ describe('canonical persistence', () => {
     expect((await read(service)).usage).toEqual(persistenceUsage(canonical))
   })
 
-  it('protects exact case-sensitive filenames and releases the last sibling and unused package', async () => {
+  it('allows repeated filenames and releases unused sources and packages', async () => {
     const service = adapter()
 
     expect((await append(service)).ok).toBe(true)
@@ -464,7 +446,7 @@ describe('canonical persistence', () => {
           }),
         }),
       ),
-    ).toMatchObject({ ok: false, code: 'duplicate-source' })
+    ).toMatchObject({ ok: true, value: { status: 'saved' } })
 
     const capital = storageSource({ id: 'capital', name: 'Invoice.xml' })
 
@@ -482,7 +464,11 @@ describe('canonical persistence', () => {
       ).ok,
     ).toBe(true)
     expect((await service.remove('invoice-1')).ok).toBe(true)
-    expect((await read(service)).sourceNames).toEqual(['Invoice.xml'])
+    expect((await read(service)).sourceNames).toEqual([
+      'Invoice.xml',
+      'invoice.xml',
+    ])
+    expect((await service.remove('second')).ok).toBe(true)
     expect((await service.remove('capital-invoice')).ok).toBe(true)
     expect((await read(service)).usage).toEqual({ files: 0, bytes: 0 })
     expect((await append(service)).ok).toBe(true)
@@ -532,9 +518,10 @@ describe('canonical persistence', () => {
           }),
         }),
       ),
-    ).toMatchObject({ ok: false, code: 'duplicate-source' })
+    ).toMatchObject({ ok: true, value: { status: 'saved' } })
 
     await service.remove('sibling')
+    await service.remove('new-invoice')
 
     expect(await records(name)).toEqual({
       imports: [],
@@ -808,90 +795,6 @@ describe('corrections and revision checks', () => {
       }),
     ).toMatchObject({ ok: false, code: 'rules-failed' })
     expect(await records(name)).toEqual(before)
-  })
-})
-
-describe('migration', () => {
-  it('reports a held legacy connection promptly and retries after it closes', async () => {
-    const name = databaseName()
-
-    await legacy(name, [legacySim()])
-
-    const held = await openDB(name, 2)
-
-    const coordinator = testCoordinator()
-    const service = adapter({ databaseName: name, coordinator })
-
-    expect(
-      await service.withImportSession(async (session) => session.snapshot()),
-    ).toMatchObject({ ok: false, code: 'storage-upgrade-blocked' })
-    expect(await coordinator.isBusy()).toBe(false)
-    expect(held.version).toBe(2)
-    expect(await held.getAll('imports')).toEqual([legacySim()])
-    held.close()
-    expect((await read(service)).usage).toEqual({ files: 0, bytes: 0 })
-  })
-  it('removes only positively identified simulated data and empty origins', async () => {
-    const name = databaseName()
-    const sim = legacySim()
-
-    await legacy(name, [
-      sim,
-      { ...sim, id: 'empty', name: 'empty.zip', invoices: [] },
-    ])
-
-    const service = adapter({ databaseName: name })
-
-    expect((await read(service)).usage).toEqual({ files: 0, bytes: 0 })
-    expect(await records(name)).toEqual({
-      imports: [],
-      invoices: [],
-      modelPackages: [],
-    })
-  })
-  it('recognizes the original explicit simulation fingerprint', async () => {
-    const name = databaseName()
-    const sim = legacySim()
-
-    sim.invoices[0]!.issuer = `Simulación — ${sim.name}`
-    sim.invoices[0]!.number = `SIM-${sim.id}`
-    sim.invoices[0]!.concepts[0]!.name = `Concepto simulado de ${sim.name}`
-
-    await legacy(name, [sim])
-
-    expect((await read(adapter({ databaseName: name }))).usage.files).toBe(0)
-  })
-  it('aborts the WHOLE mixed migration and preserves original v2 bytes', async () => {
-    const name = databaseName()
-    const sim = legacySim()
-    const real = {
-      ...sim,
-      id: 'real-origin',
-      name: 'real.xml',
-      invoices: [
-        { ...sim.invoices[0], id: 'actual-invoice', issuer: 'Real issuer' },
-      ],
-    }
-    const before = [sim, real]
-
-    await legacy(name, before)
-
-    expect(await adapter({ databaseName: name }).read()).toMatchObject({
-      ok: false,
-      code: 'storage-migration-required',
-    })
-
-    const db = await openDB(name)
-
-    expect(db.version).toBe(2)
-    expect([...db.objectStoreNames]).toEqual(['imports'])
-
-    const restored = await db.getAll('imports')
-
-    db.close()
-    expect(restored).toEqual(
-      [...before].sort((a, b) => a.id.localeCompare(b.id)),
-    )
   })
 })
 

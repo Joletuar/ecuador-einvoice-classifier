@@ -311,6 +311,7 @@ export function validateInvoiceRecord(value: unknown): value is InvoiceRecord {
       value,
       [
         'schemaVersion',
+        'accessKey',
         'id',
         'importId',
         'entryIndex',
@@ -333,6 +334,8 @@ export function validateInvoiceRecord(value: unknown): value is InvoiceRecord {
     value.schemaVersion !== 1 ||
     !nonempty(value.id) ||
     !nonempty(value.importId) ||
+    typeof value.accessKey !== 'string' ||
+    !/^\d{49}$/.test(value.accessKey) ||
     !integer(value.entryIndex) ||
     !nullableNonempty(value.entryPath) ||
     !hash(value.modelPackageId) ||
@@ -504,6 +507,7 @@ export function cloneIssue(issue: InvoiceIssue): InvoiceIssue {
 export function cloneInvoiceRecord(record: InvoiceRecord): InvoiceRecord {
   return {
     schemaVersion: 1,
+    accessKey: record.accessKey,
     id: record.id,
     importId: record.importId,
     entryIndex: record.entryIndex,
@@ -591,8 +595,6 @@ export function validatePersistenceSnapshot(
   if (
     imports.size !== snapshot.imports.length ||
     packs.size !== snapshot.modelPackages.length ||
-    new Set(snapshot.imports.map((source) => source.name)).size !==
-      imports.size ||
     new Set(snapshot.invoices.map((invoice) => invoice.id)).size !==
       snapshot.invoices.length
   ) {
@@ -601,8 +603,15 @@ export function validatePersistenceSnapshot(
 
   const entries = new Map<string, Set<number>>()
   const usedPacks = new Set<string>()
+  const accessKeys = new Set<string>()
 
   for (const invoice of snapshot.invoices) {
+    if (accessKeys.has(invoice.accessKey)) {
+      return false
+    }
+
+    accessKeys.add(invoice.accessKey)
+
     const source = imports.get(invoice.importId)
     const pack = packs.get(invoice.modelPackageId)
 

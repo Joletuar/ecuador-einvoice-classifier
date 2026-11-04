@@ -15,7 +15,11 @@ import {
   invoiceCommitFixture,
 } from './fixtures/invoices'
 import { limits } from './fixtures/workerFixtures'
-import { testCoordinator, testRecalculate } from './storageFixtures'
+import {
+  testCoordinator,
+  testRecalculate,
+  accessKeyFixture,
+} from './fixtures/storageFixtures'
 import type { ProcessingProgress } from '../src/features/upload/services/processingService'
 
 type Client = Pick<
@@ -50,8 +54,13 @@ function terminal(
   }
 }
 
-function invoice(source: WorkerSource, entryIndex = 0): InvoiceEvent {
+function invoice(
+  source: WorkerSource,
+  entryIndex = 0,
+  accessKey = accessKeyFixture(`${source.source.name}:${entryIndex}`),
+): InvoiceEvent {
   const record = invoiceCommitFixture({
+    accessKey,
     id: `${source.source.id}:${entryIndex}`,
     importId: source.source.id,
     entryIndex,
@@ -381,12 +390,16 @@ describe('real Worker processing adapter', () => {
     )
   })
 
-  it('checks literal filename duplicates inside the writer session and permits case-distinct names', async () => {
+  it('processes repeated filenames and deduplicates renamed XML by access key', async () => {
     const onProgress = vi.fn<(progress: ProcessingProgress) => void>()
     const s = setup(async (sources, _id, hooks) => {
       for (const source of sources) {
-        await hooks.onInvoice(invoice(source))
+        const key =
+          source.selectionId === 'renamed'
+            ? accessKeyFixture('selection-0')
+            : accessKeyFixture(source.selectionId)
 
+        await hooks.onInvoice(invoice(source, 0, key))
         sourceResult(source, hooks, 1)
       }
 
@@ -400,29 +413,32 @@ describe('real Worker processing adapter', () => {
       file: new File(['xml'], name),
     }))
 
-    const first = await s.service.process(inputs, { ...s.hooks(), onProgress })
-
-    expect(first).toMatchObject({
+    expect(
+      await s.service.process(inputs, { ...s.hooks(), onProgress }),
+    ).toMatchObject({
       ok: true,
-      value: { summary: { saved: 2, duplicates: 1 } },
+      value: { summary: { saved: 3, duplicates: 0 } },
     })
-    expect(vi.mocked(s.client.process).mock.calls[0]?.[0]).toHaveLength(2)
+    expect(vi.mocked(s.client.process).mock.calls[0]?.[0]).toHaveLength(3)
     expect(onProgress.mock.calls.at(-1)?.[0]).toMatchObject({
       completed: 3,
       total: 3,
-      xmlProgress: { completed: 2, total: 2 },
+      xmlProgress: { completed: 3, total: 3 },
     })
-
-    const second = await s.service.process(
-      [{ id: 'new selection', file: new File(['changed bytes'], 'A.xml') }],
-      s.hooks(),
-    )
-
-    expect(second).toMatchObject({
+    expect(
+      await s.service.process(
+        [{ id: 'renamed', file: new File(['xml'], 'renamed.xml') }],
+        s.hooks(),
+      ),
+    ).toMatchObject({
       ok: true,
       value: { summary: { saved: 0, duplicates: 1 } },
     })
-    expect(s.client.process).toHaveBeenCalledTimes(1)
+    expect(s.client.process).toHaveBeenCalledTimes(2)
+    expect(await s.invoices.read()).toMatchObject({
+      ok: true,
+      value: { usage: { files: 3 } },
+    })
   })
 
   it('retains a corrupt ZIP warning after recovered saves and processes sibling selections', async () => {
@@ -478,6 +494,14 @@ describe('real Worker processing adapter', () => {
         sourceResult(source, hooks, 1, null, 2)
 
         return terminal('cancelled')
+      }
+
+      if (attempt > 2) {
+        await hooks.onInvoice(invoice(source, 0))
+        await hooks.onInvoice(invoice(source, 1))
+        sourceResult(source, hooks, 0, null, 2)
+
+        return terminal()
       }
 
       expect(source.source.id).toBe(importId)

@@ -492,7 +492,7 @@ describe('confirmed processing workflow', () => {
         id: entries[0]!.id,
         name: entries[0]!.file.name,
         status: 'duplicate',
-        duplicateFileName: entries[0]!.file.name,
+        invoiceIds: ['already-saved-invoice'],
         message: 'Ya existe un archivo con este nombre.',
       },
       ...entries.slice(1).map((entry): FileProcessingResult => ({

@@ -167,7 +167,7 @@ describe('real upload presentation', () => {
         name: input.file.name,
         message: 'Duplicado',
         status: 'duplicate',
-        duplicateFileName: input.file.name,
+        invoiceIds: ['existing'],
       }))
 
       files.forEach(hooks.onFileResult)
@@ -431,8 +431,8 @@ describe('real upload presentation', () => {
             id: 'duplicate',
             name: 'duplicate.xml',
             status: 'duplicate',
-            duplicateFileName: 'duplicate.xml',
-            message: 'Ya existe un archivo con este nombre.',
+            invoiceIds: ['existing'],
+            message: 'La factura ya está guardada con esta clave de acceso.',
           },
         ],
         summary: { added: 1, duplicates: 0, failed: 1, saved: 1 },

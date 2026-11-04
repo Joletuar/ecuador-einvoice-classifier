@@ -10,37 +10,6 @@ export interface SelectedFile extends SelectedProcessingFile {
   unresolved?: boolean
 }
 
-export function planProcessingFiles(
-  selected: readonly SelectedProcessingFile[],
-  storedNames: readonly string[],
-) {
-  const stored = new Set(storedNames)
-  const seen = new Set(storedNames)
-  const pending: SelectedProcessingFile[] = []
-  const duplicates: FileProcessingResult[] = []
-
-  for (const entry of selected) {
-    const name = entry.file.name
-
-    if (seen.has(name)) {
-      duplicates.push({
-        id: entry.id,
-        name,
-        status: FileResultStatus.Duplicate,
-        duplicateFileName: name,
-        message: stored.has(name)
-          ? 'Ya existe un archivo guardado con este nombre.'
-          : 'El nombre está repetido en este lote.',
-      })
-    } else {
-      seen.add(name)
-      pending.push(entry)
-    }
-  }
-
-  return { pending, duplicates }
-}
-
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`
