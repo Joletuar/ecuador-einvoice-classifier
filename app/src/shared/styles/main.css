@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+@source '../../';
+
+@theme {
+  --font-sans:
+    'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-canvas: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-ink: #182438;
+  --color-ink-muted: #526174;
+  --color-line: #dce3eb;
+  --color-primary: #1456a0;
+  --color-primary-strong: #1257b8;
+  --color-primary-soft: #e8f1fe;
+  --color-table-head: #f4f8fd;
+  --color-table-hover: #e9edf2;
+  --color-success: #1d7a3a;
+  --color-success-strong: #16602d;
+  --color-success-soft: #e6f7ec;
+  --color-danger: #d12020;
+  --color-danger-strong: #a51919;
+  --color-danger-soft: #fdeaea;
+  --color-warning: #9a5b00;
+  --color-warning-soft: #fff4e0;
+  --color-violet: #6d3bbf;
+  --color-violet-soft: #f1eafe;
+  --radius-card: 0.5rem;
+  --shadow-card: 0 2px 8px rgb(24 36 56 / 5%);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  button:not(:disabled),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
