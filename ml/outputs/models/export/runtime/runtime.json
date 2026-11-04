@@ -1,0 +1,21 @@
+{
+  "version": "1.31.1",
+  "source_commit": "6af1a932e2286d5c58166085d24c68783033edee",
+  "emscripten": "4.0.23",
+  "signature": "f735f7cfaa3c545f63a0295f0d5701f35d7c5e1bd307dd76aca4f4ac47c8f193",
+  "unicode_version": "16.0.0",
+  "utf8proc_version": "2.10.0",
+  "threads": 1,
+  "simd": true,
+  "loader": "ort.wasm.min.mjs",
+  "module": "ort-wasm-simd.mjs",
+  "wasm": "ort-wasm-simd.wasm",
+  "files": {
+    "ort-wasm-simd.wasm": "4d886400ef3f26c6ebeffd01efa9fba263c48d19fd5e7be11aa46c738dc8019e",
+    "ort-wasm-simd.mjs": "a4a0f2cb05b18335c1480781b1f6d24827b1e0bb71d4437de2f0e74fc0784cb1",
+    "ort.wasm.min.mjs": "c21d9c326d453a4a61398270c804d5979e118540597cb0c07f7b3d64e6098234",
+    "LICENSE.onnxruntime": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "ThirdPartyNotices.onnxruntime.txt": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+    "LICENSE.utf8proc.md": "3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256"
+  }
+}

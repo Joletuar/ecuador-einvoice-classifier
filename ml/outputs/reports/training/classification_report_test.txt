@@ -1,0 +1,13 @@
+                           precision    recall  f1-score   support
+
+             Alimentación     0.8311    0.6881    0.7529       994
+                    Salud     0.8321    0.7550    0.7917       151
+Educación, Arte y Cultura     0.6613    0.4362    0.5256        94
+                 Vivienda     0.8889    0.4583    0.6048       192
+               Vestimenta     0.6364    0.1944    0.2979        36
+         Turismo Nacional     1.0000    0.5294    0.6923        17
+                    Otros     0.5841    0.8371    0.6881       792
+
+                 accuracy                         0.7056      2276
+                macro avg     0.7763    0.5569    0.6219      2276
+             weighted avg     0.7413    0.7056    0.7034      2276

@@ -1,0 +1,54 @@
+{
+  "model": "concept_pipeline.onnx",
+  "sha256": "dd40ddb0875cbf94c27b231a6cde0824dcda23394d842f29345e12898c8668b5",
+  "source_sha256": "065b5d1b1c52fbf62815671595b1d2d9aacac11d4760ef9ef7facdb153691dd0",
+  "classes": [
+    "Alimentación",
+    "Educación, Arte y Cultura",
+    "Otros",
+    "Salud",
+    "Turismo Nacional",
+    "Vestimenta",
+    "Vivienda"
+  ],
+  "features": 26780,
+  "unicode_version": "16.0.0",
+  "python_version": "3.14.10",
+  "runtime_signature": "f735f7cfaa3c545f63a0295f0d5701f35d7c5e1bd307dd76aca4f4ac47c8f193",
+  "runtime_packaged": true,
+  "runtime": {
+    "version": "1.31.1",
+    "source_commit": "6af1a932e2286d5c58166085d24c68783033edee",
+    "emscripten": "4.0.23",
+    "signature": "f735f7cfaa3c545f63a0295f0d5701f35d7c5e1bd307dd76aca4f4ac47c8f193",
+    "unicode_version": "16.0.0",
+    "utf8proc_version": "2.10.0",
+    "threads": 1,
+    "simd": true,
+    "loader": "ort.wasm.min.mjs",
+    "module": "ort-wasm-simd.mjs",
+    "wasm": "ort-wasm-simd.wasm",
+    "files": {
+      "ort-wasm-simd.wasm": "4d886400ef3f26c6ebeffd01efa9fba263c48d19fd5e7be11aa46c738dc8019e",
+      "ort-wasm-simd.mjs": "a4a0f2cb05b18335c1480781b1f6d24827b1e0bb71d4437de2f0e74fc0784cb1",
+      "ort.wasm.min.mjs": "c21d9c326d453a4a61398270c804d5979e118540597cb0c07f7b3d64e6098234",
+      "LICENSE.onnxruntime": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "ThirdPartyNotices.onnxruntime.txt": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+      "LICENSE.utf8proc.md": "3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256"
+    }
+  },
+  "inputs": {
+    "descriptions": "raw string vector in original concept order",
+    "description_present": "boolean vector: source field exists"
+  },
+  "outputs": {
+    "categories": "category labels; empty for failed concepts",
+    "category_indices": "indices in classes; -1 for failed concepts",
+    "probabilities": "float64 matrix; columns follow classes; failed rows are zero",
+    "concept_statuses": {
+      "0": "ok",
+      "1": "missing_description",
+      "2": "invalid_unicode"
+    }
+  }
+}
