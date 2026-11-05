@@ -51,7 +51,7 @@ const navigationClass =
           class="cursor-not-allowed opacity-50"
           title="Disponible cuando haya facturas guardadas"
         >
-          Mis facturas
+          Facturas
         </button>
         <RouterLink
           v-else
