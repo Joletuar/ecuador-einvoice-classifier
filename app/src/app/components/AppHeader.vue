@@ -59,7 +59,7 @@ const navigationClass =
           :class="navigationClass"
           active-class="underline underline-offset-8 decoration-2 text-primary"
         >
-          Mis facturas
+          Facturas
         </RouterLink>
       </nav>
       <div

@@ -103,7 +103,7 @@ describe('one offline recovery control', () => {
     expect(wrapper.emitted('update')).toBeUndefined()
   })
 
-  it('prioritizes the update action and keeps its attention hint until the backend clears availability', async () => {
+  it('keeps the summary before the update action and retains attention until the backend clears availability', async () => {
     const { wrapper, view } = menu()
     const trigger = wrapper.findAll('button')[0]!
     const update = wrapper
@@ -119,8 +119,8 @@ describe('one offline recovery control', () => {
         .findAll('p')
         .some((paragraph) => paragraph.text() === 'Actualización disponible'),
     ).toBe(false)
-    expect(wrapper.text().indexOf(view.updateLabel)).toBeLessThan(
-      wrapper.text().indexOf(view.label),
+    expect(wrapper.text().indexOf(view.label)).toBeLessThan(
+      wrapper.text().indexOf(view.updateLabel),
     )
     await update[0]!.trigger('click')
     expect(wrapper.emitted('update')).toEqual([[]])
