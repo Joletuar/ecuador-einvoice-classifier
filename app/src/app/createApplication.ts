@@ -64,7 +64,10 @@ export function createApplication(options: {
 
   const browserOffline = options.services
     ? undefined
-    : createBrowserOfflineService({ coordinator: updates })
+    : createBrowserOfflineService({
+        coordinator: updates,
+        canReload: () => !protection.isDirty() && !protection.isUpdateBlocked(),
+      })
   const invoiceService =
     options.services?.invoices ??
     createIndexedDbInvoiceService(options.limits, {

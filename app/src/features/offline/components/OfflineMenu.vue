@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, shallowRef, useTemplateRef, watch } from 'vue'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -20,21 +20,16 @@ import Button from '../../../shared/ui/button/Button.vue'
 
 const {
   view,
-  canRetryStorage = false,
-  retryingStorage = false,
-  canRetryProcessing = false,
-  retryingProcessing = false,
+  canRetry = false,
+  retrying = false,
 } = defineProps<{
   view: OfflineView
-  canRetryStorage?: boolean
-  retryingStorage?: boolean
-  canRetryProcessing?: boolean
-  retryingProcessing?: boolean
+  canRetry?: boolean
+  retrying?: boolean
 }>()
 const emit = defineEmits<{
   update: []
-  retryStorage: []
-  retryProcessing: []
+  retry: []
 }>()
 
 const unavailable = computed(() =>
@@ -42,6 +37,38 @@ const unavailable = computed(() =>
 )
 const available = computed(() =>
   view.items.filter((item) => item.tone === FeedbackTone.Success),
+)
+
+const unavailableList = useTemplateRef<HTMLUListElement>('unavailableList')
+const unavailableHeight = shallowRef<number>()
+
+watch(
+  [unavailableList, unavailable],
+  ([list], _previous, onCleanup) => {
+    unavailableHeight.value = undefined
+
+    if (!list || unavailable.value.length <= 3) {
+      return
+    }
+
+    const rows = Array.from(list.children).slice(0, 3) as HTMLElement[]
+    const measure = () => {
+      const first = rows[0]!
+      const third = rows[2]!
+
+      unavailableHeight.value =
+        third.offsetTop + third.offsetHeight - first.offsetTop
+    }
+
+    measure()
+
+    const observer = new ResizeObserver(measure)
+
+    observer.observe(list)
+    rows.forEach((row) => observer.observe(row))
+    onCleanup(() => observer.disconnect())
+  },
+  { flush: 'post' },
 )
 
 const dotClasses = {
@@ -93,11 +120,11 @@ const labels = {
         align="end"
         :side-offset="8"
         :collision-padding="16"
-        class="z-60 max-h-[min(36rem,var(--reka-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-card border border-line bg-surface p-4 text-left shadow-lg"
+        class="z-60 flex max-h-[min(36rem,var(--reka-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-card border border-line bg-surface p-4 text-left shadow-lg"
       >
-        <h2 class="text-sm font-bold text-ink">Estado sin conexión</h2>
+        <h2 class="shrink-0 text-sm font-bold text-ink">Estado sin conexión</h2>
         <p
-          class="mt-3 flex items-start gap-2 text-sm"
+          class="mt-3 flex shrink-0 items-start gap-2 text-sm"
           :class="
             view.tone === FeedbackTone.Danger ? 'text-danger' : 'text-ink-muted'
           "
@@ -122,13 +149,21 @@ const labels = {
         </p>
         <h3
           v-if="unavailable.length"
-          class="mt-4 border-t border-line pt-3 text-xs font-semibold text-ink-muted"
+          class="mt-4 shrink-0 border-t border-line pt-3 text-xs font-semibold text-ink-muted"
         >
           Funciones no disponibles
         </h3>
         <ul
           v-if="unavailable.length"
-          class="mt-3 grid gap-3"
+          ref="unavailableList"
+          :style="
+            unavailableHeight === undefined
+              ? undefined
+              : { maxHeight: `${unavailableHeight}px` }
+          "
+          tabindex="0"
+          aria-label="Funciones no disponibles"
+          class="relative mt-3 grid min-h-0 gap-3 overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-primary"
         >
           <li
             v-for="item in unavailable"
@@ -154,39 +189,19 @@ const labels = {
           </li>
         </ul>
         <Button
-          v-if="canRetryStorage || retryingStorage"
+          v-if="canRetry || retrying"
           type="button"
           variant="outline"
-          :disabled="retryingStorage"
-          class="mt-3 w-full"
-          @click="emit('retryStorage')"
+          :disabled="retrying || view.updatePending"
+          :aria-busy="retrying"
+          class="mt-3 w-full shrink-0"
+          @click="emit('retry')"
         >
-          {{
-            retryingStorage ? 'Consultando facturas…' : 'Reintentar consulta'
-          }}
+          {{ retrying ? 'Reintentando…' : 'Reintentar' }}
         </Button>
         <ul
-          v-if="canRetryProcessing || retryingProcessing"
-          class="mt-3"
-        >
-          <li>
-            <Button
-              variant="outline"
-              class="w-full"
-              :disabled="retryingProcessing || view.updatePending"
-              @click="emit('retryProcessing')"
-            >
-              {{
-                retryingProcessing
-                  ? 'Preparando el uso sin conexión…'
-                  : 'Volver a intentar'
-              }}
-            </Button>
-          </li>
-        </ul>
-        <ul
           v-if="available.length"
-          class="mt-4 grid gap-2 border-t border-line pt-3"
+          class="mt-4 grid min-h-0 gap-2 overflow-y-auto border-t border-line pt-3"
         >
           <li
             v-for="item in available"
@@ -213,7 +228,7 @@ const labels = {
           v-if="view.updateAvailable"
           type="button"
           variant="outline"
-          class="mt-3 w-full"
+          class="mt-3 w-full shrink-0"
           :disabled="view.updatePending"
           @click="emit('update')"
         >

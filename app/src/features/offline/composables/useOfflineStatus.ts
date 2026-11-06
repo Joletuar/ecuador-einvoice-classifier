@@ -24,7 +24,9 @@ export function useOfflineStatus() {
 
   const storageIssue = computed(() => {
     if (invoices.snapshot.kind !== InvoiceSnapshotKind.Error) {
-      return undefined
+      return invoices.snapshot.kind === InvoiceSnapshotKind.Ready
+        ? undefined
+        : 'Consultando tus facturas…'
     }
 
     const issueCode = invoices.snapshot.code
@@ -37,32 +39,39 @@ export function useOfflineStatus() {
       ? 'El almacenamiento local no está disponible.'
       : invoices.snapshot.message
   })
+  const admissionIssue = computed(() =>
+    interaction?.blocked.value
+      ? interaction.message.value || 'Esperando verificar esta pestaña…'
+      : undefined,
+  )
   const status = computed<OfflineView>(() => {
     const items = [...offline.value.items]
+    const classificationIssue =
+      admissionIssue.value || storageIssue.value || processing.issue
 
     items.push({
       label: 'Clasificación de facturas',
-      detail: processing.available
-        ? 'Listo para procesar tus archivos.'
-        : processing.issue,
-      tone: processing.available ? FeedbackTone.Success : FeedbackTone.Warning,
+      detail: classificationIssue || 'Listo para procesar tus archivos.',
+      tone: classificationIssue ? FeedbackTone.Warning : FeedbackTone.Success,
     })
 
     const blocked = (label: string, detail: string) => {
       items.push({ label, detail, tone: FeedbackTone.Warning })
     }
 
-    if (storageIssue.value) {
-      blocked('Seleccionar archivos', storageIssue.value)
+    const pageIssue = admissionIssue.value || storageIssue.value
+
+    if (pageIssue) {
+      blocked('Seleccionar archivos', pageIssue)
     }
 
-    const processingIssue = processing.issue || storageIssue.value
+    const processingIssue = classificationIssue
 
     if (processingIssue) {
       blocked('Procesar archivos', processingIssue)
     }
 
-    if (storageIssue.value) {
+    if (pageIssue) {
       for (const label of [
         'Consultar facturas',
         'Editar categorías',
@@ -70,7 +79,7 @@ export function useOfflineStatus() {
         'Consultar capacidad',
         'Borrar datos almacenados',
       ]) {
-        blocked(label, storageIssue.value)
+        blocked(label, pageIssue)
       }
     }
 
@@ -78,6 +87,15 @@ export function useOfflineStatus() {
 
     return {
       ...offline.value,
+      label: admissionIssue.value
+        ? admissionIssue.value
+        : storageIssue.value
+          ? storageIssue.value
+          : limited && offline.value.cacheReady
+            ? processing.state.kind === PreparationKind.Loading
+              ? 'Preparando el clasificador de facturas…'
+              : 'Algunas funciones todavía no están disponibles.'
+            : offline.value.label,
       tone:
         offline.value.tone === FeedbackTone.Danger
           ? FeedbackTone.Danger
@@ -88,31 +106,66 @@ export function useOfflineStatus() {
     }
   })
 
+  const recovering = shallowRef(false)
+  const preparationNeedsRetry = computed(
+    () =>
+      Boolean(offline.value.canRetry) ||
+      processing.state.kind === PreparationKind.Error ||
+      Boolean(interaction?.blocked.value),
+  )
+  const retrying = computed(
+    () =>
+      recovering.value ||
+      invoices.snapshot.kind === InvoiceSnapshotKind.Loading ||
+      Boolean(offline.value.preparing) ||
+      (processing.state.kind === PreparationKind.Loading &&
+        !interaction?.blocked.value),
+  )
+  const canRetry = computed(
+    () => Boolean(storageIssue.value) || preparationNeedsRetry.value,
+  )
+
+  async function retry() {
+    if (retrying.value || offline.value.updatePending || !canRetry.value) {
+      return
+    }
+
+    const refreshStorage = Boolean(storageIssue.value)
+    const prepareProcessing = preparationNeedsRetry.value
+
+    recovering.value = true
+
+    try {
+      const recovery: Promise<unknown>[] = []
+
+      if (refreshStorage) {
+        recovery.push(invoices.refresh())
+      }
+
+      if (prepareProcessing) {
+        recovery.push(
+          (async () => {
+            await service.retry()
+
+            if (!interaction?.blocked.value && !processing.available) {
+              await processing.retry()
+            }
+          })(),
+        )
+      }
+
+      // Cada capacidad publica su estado; el fallo de una no cancela la otra.
+      await Promise.allSettled(recovery)
+    } finally {
+      recovering.value = false
+    }
+  }
+
   return {
     status,
-    storageIssue,
-    processingState: computed(() => processing.state),
-    canRetryPreparation: computed(
-      () =>
-        Boolean(offline.value.canRetry) ||
-        processing.state.kind === PreparationKind.Error ||
-        Boolean(interaction?.blocked.value),
-    ),
-    retryingPreparation: computed(
-      () =>
-        Boolean(offline.value.preparing) ||
-        (processing.state.kind === PreparationKind.Loading &&
-          !interaction?.blocked.value),
-    ),
-
-    async retryProcessing() {
-      await service.retry()
-
-      if (!interaction?.blocked.value) {
-        await processing.retry()
-      }
-    },
-
+    canRetry,
+    retrying,
+    retry,
     applyUpdate: service.applyUpdate,
   }
 }

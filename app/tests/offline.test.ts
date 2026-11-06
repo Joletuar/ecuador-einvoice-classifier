@@ -28,6 +28,8 @@ const cleanups: (() => void)[] = []
 
 afterEach(async () => {
   cleanups.splice(0).forEach((cleanup) => cleanup())
+  vi.restoreAllMocks()
+  window.sessionStorage.clear()
   vi.unstubAllGlobals()
 
   await Promise.resolve()
@@ -38,24 +40,30 @@ function status(
   identity = current,
   complete = true,
 ): OfflineStatus {
+  const matchesExpected =
+    request.expected.appReleaseId === identity.appReleaseId &&
+    request.expected.modelPackageId === identity.modelPackageId
+
   return {
     protocol: offlineProtocol,
     version: offlineProtocolVersion,
     requestId: request.requestId,
     type: 'STATUS',
     identity,
-    matchesExpected:
-      request.expected.appReleaseId === identity.appReleaseId &&
-      request.expected.modelPackageId === identity.modelPackageId,
-    preparation: complete ? 'ready' : 'incomplete',
-    uiComplete: complete,
-    classifierComplete: complete,
+    matchesExpected,
+    preparation: complete && matchesExpected ? 'ready' : 'incomplete',
+    uiComplete: complete && matchesExpected,
+    classifierComplete: complete && matchesExpected,
   }
 }
 
 function environment(
   options: {
     complete?: boolean
+    uncontrolled?: boolean
+    installing?: boolean
+    expected?: OfflineIdentity
+    activeIdentity?: OfflineIdentity
     waiting?: boolean
     timeout?: number
     locks?: LockManager
@@ -84,6 +92,8 @@ function environment(
     isBlocked: () => local.busy,
   })
   const received: OfflineRequest[] = []
+  const expectedIdentity = options.expected ?? current
+  const activeIdentity = options.activeIdentity ?? expectedIdentity
   let complete = options.complete ?? true
   const active = Object.assign(new EventTarget(), {
     state: 'activated',
@@ -94,7 +104,7 @@ function environment(
         complete = true
       }
 
-      ports[0]!.postMessage(status(request, current, complete))
+      ports[0]!.postMessage(status(request, activeIdentity, complete))
     }),
   })
   const waiting = Object.assign(new EventTarget(), {
@@ -202,10 +212,12 @@ function environment(
   const registration = Object.assign(new EventTarget(), {
     active,
     waiting: options.waiting === false ? null : waiting,
-    installing: null,
+    installing: options.installing
+      ? Object.assign(new EventTarget(), { state: 'installing' })
+      : null,
   })
   const container = Object.assign(new EventTarget(), {
-    controller: active,
+    controller: options.uncontrolled ? null : active,
     register: vi.fn(async () => registration),
   })
 
@@ -241,10 +253,11 @@ function environment(
   const service = createBrowserOfflineService({
     production: true,
     baseUrl: '/',
-    expected: current,
+    expected: expectedIdentity,
     serviceWorker: container as unknown as ServiceWorkerContainer,
     coordinator: updates,
     reload,
+    canReload: () => !local.dirty && !local.busy,
     confirm,
     timeoutMs: options.timeout ?? 1000,
   })
@@ -280,6 +293,406 @@ function environment(
 const permission = () => ({ allowed: true, commit: vi.fn(), cancel: vi.fn() })
 
 describe('verified offline resources', () => {
+  it('requests recovery after a forced reload without admitting the uncontrolled document', async () => {
+    const env = environment({ uncontrolled: true, waiting: false })
+
+    await vi.waitFor(() => expect(env.service.current().cacheReady).toBe(true))
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+    expect(env.updates.interaction.blocked.value).toBe(true)
+    expect(env.reload).toHaveBeenCalledOnce()
+  })
+
+  it('uses one persisted recovery attempt across service recreation and rearms only on explicit retry', async () => {
+    const first = environment({ uncontrolled: true, waiting: false })
+
+    await first.updates.admit(first.service.verifyVersion)
+    expect(first.reload).toHaveBeenCalledOnce()
+    await first.updates.admit(first.service.verifyVersion)
+    expect(first.reload).toHaveBeenCalledOnce()
+
+    const reopened = environment({ uncontrolled: true, waiting: false })
+
+    expect(await reopened.updates.admit(reopened.service.verifyVersion)).toBe(
+      false,
+    )
+    expect(reopened.reload).not.toHaveBeenCalled()
+    await reopened.service.retry()
+    expect(reopened.reload).toHaveBeenCalledOnce()
+    expect(reopened.updates.interaction.blocked.value).toBe(true)
+    await reopened.updates.admit(reopened.service.verifyVersion)
+    expect(reopened.reload).toHaveBeenCalledOnce()
+
+    reopened.container.controller = reopened.active
+
+    expect(await reopened.updates.admit(reopened.service.verifyVersion)).toBe(
+      true,
+    )
+    expect(reopened.updates.interaction.blocked.value).toBe(false)
+
+    reopened.container.controller = null
+
+    await reopened.updates.admit(reopened.service.verifyVersion)
+    expect(reopened.reload).toHaveBeenCalledTimes(2)
+  })
+
+  it('scopes the recovery budget to the current release and model package', async () => {
+    const first = environment({ uncontrolled: true, waiting: false })
+
+    await first.updates.admit(first.service.verifyVersion)
+    expect(first.reload).toHaveBeenCalledOnce()
+
+    const nextRelease = environment({
+      uncontrolled: true,
+      waiting: false,
+      expected: { ...current, appReleaseId: 'release-next' },
+    })
+
+    await nextRelease.updates.admit(nextRelease.service.verifyVersion)
+    expect(nextRelease.reload).toHaveBeenCalledOnce()
+
+    const nextModel = environment({
+      uncontrolled: true,
+      waiting: false,
+      expected: { ...current, modelPackageId: 'model-next' },
+    })
+
+    await nextModel.updates.admit(nextModel.service.verifyVersion)
+    expect(nextModel.reload).toHaveBeenCalledOnce()
+  })
+
+  it.each(['dirty', 'busy'] as const)(
+    'does not reload over %s work',
+    async (condition) => {
+      const env = environment({ uncontrolled: true, waiting: false })
+
+      env.local[condition] = true
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['throw', 'unconfirmed-write', 'occupied-marker'] as const)(
+    'does not navigate without a confirmed unused recovery budget: %s',
+    async (condition) => {
+      const env = environment({ uncontrolled: true, waiting: false })
+
+      if (condition === 'throw') {
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+          throw new Error('Storage denied')
+        })
+      } else if (condition === 'unconfirmed-write') {
+        vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(null)
+      } else {
+        vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(
+          'unknown existing marker',
+        )
+      }
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects missing cached assets, a wrong active identity, and a live installation for uncontrolled recovery', async () => {
+    for (const condition of ['incomplete', 'wrong-identity', 'installing']) {
+      const env = environment({
+        uncontrolled: true,
+        waiting: false,
+        complete: condition !== 'incomplete',
+        installing: condition === 'installing',
+      })
+
+      if (condition === 'wrong-identity') {
+        env.active.postMessage.mockImplementation((request, ports) =>
+          ports[0]!.postMessage(status(request, candidate)),
+        )
+      }
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each(['preparing', 'prepared', 'activating', 'unknown'] as const)(
+    'requires a durably idle waiting candidate, rejecting %s',
+    async (phase) => {
+      const env = environment({
+        uncontrolled: true,
+        candidateControl: { phase },
+      })
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+    },
+  )
+
+  it('accepts recovery with a verified idle waiting candidate without activating it', async () => {
+    const env = environment({ uncontrolled: true })
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+    expect(env.reload).toHaveBeenCalledOnce()
+    expect(
+      env.received.some((request) => request.type === 'ACTIVATE_UPDATE'),
+    ).toBe(false)
+  })
+
+  it('rejects a tampered candidate reply and a worker changing during asynchronous verification', async () => {
+    const tampered = environment({ uncontrolled: true, timeout: 20 })
+
+    tampered.waiting.postMessage.mockImplementation(async (request, ports) => {
+      ports[0]!.postMessage(
+        request.type === 'GET_CANDIDATE_STATE'
+          ? {
+              protocol: offlineProtocol,
+              version: offlineProtocolVersion,
+              requestId: request.requestId,
+              type: 'CANDIDATE_STATE',
+              identity: current,
+              phase: 'idle',
+            }
+          : status(request, candidate),
+      )
+    })
+
+    expect(await tampered.updates.admit(tampered.service.verifyVersion)).toBe(
+      false,
+    )
+    expect(tampered.reload).not.toHaveBeenCalled()
+
+    const changed = environment({ uncontrolled: true, waiting: false })
+
+    changed.active.postMessage.mockImplementation((request, ports) => {
+      changed.active.state = 'redundant'
+      ports[0]!.postMessage(status(request))
+    })
+
+    expect(await changed.updates.admit(changed.service.verifyVersion)).toBe(
+      false,
+    )
+    expect(changed.reload).not.toHaveBeenCalled()
+  })
+
+  it('rechecks references after asynchronous replies and preserves the controlled online path', async () => {
+    const env = environment({ uncontrolled: true, waiting: false })
+
+    env.active.postMessage.mockImplementation((request, ports) => {
+      env.container.controller = env.active
+      ports[0]!.postMessage(status(request))
+    })
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(true)
+    expect(env.reload).not.toHaveBeenCalled()
+
+    const controlled = environment({ waiting: false, complete: false })
+
+    expect(
+      await controlled.updates.admit(controlled.service.verifyVersion),
+    ).toBe(true)
+    expect(controlled.reload).not.toHaveBeenCalled()
+  })
+
+  it('bridges an uncontrolled new-release page to a verified old active worker without admitting or activating', async () => {
+    const env = environment({
+      uncontrolled: true,
+      expected: candidate,
+      activeIdentity: current,
+    })
+
+    await vi.waitFor(() => expect(env.service.current().preparing).toBe(false))
+    env.received.splice(0)
+    env.active.postMessage.mockClear()
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+    expect(env.updates.interaction.blocked.value).toBe(true)
+    expect(env.reload).toHaveBeenCalledOnce()
+    expect(
+      env.active.postMessage.mock.calls.map(([request]) => request.expected),
+    ).toEqual([candidate, current])
+    expect(env.received.map((request) => request.type)).toEqual([
+      'GET_STATUS',
+      'GET_STATUS',
+      'GET_STATUS',
+      'GET_CANDIDATE_STATE',
+    ])
+    expect(
+      env.received.some(
+        (request) =>
+          request.type === 'ACTIVATE_UPDATE' ||
+          request.type === 'PREPARE_UPDATE',
+      ),
+    ).toBe(false)
+  })
+
+  it.each([
+    'incomplete-active',
+    'changed-active-identity',
+    'active-denies-match',
+    'wrong-waiting-release',
+    'wrong-waiting-model',
+    'incomplete-waiting',
+  ] as const)(
+    'rejects an unverified old-active/new-waiting recovery bridge: %s',
+    async (condition) => {
+      const env = environment({
+        uncontrolled: true,
+        expected: candidate,
+        activeIdentity: current,
+      })
+
+      await vi.waitFor(() =>
+        expect(env.service.current().preparing).toBe(false),
+      )
+
+      const activeReply = env.active.postMessage.getMockImplementation()!
+      const waitingReply = env.waiting.postMessage.getMockImplementation()!
+
+      env.active.postMessage.mockImplementation((request, ports) => {
+        if (request.expected.appReleaseId !== current.appReleaseId) {
+          activeReply(request, ports)
+
+          return
+        }
+
+        const own = status(request, current, condition !== 'incomplete-active')
+
+        ports[0]!.postMessage(
+          condition === 'changed-active-identity'
+            ? status(request, {
+                ...current,
+                appReleaseId: 'unexpected-active-identity',
+              })
+            : condition === 'active-denies-match'
+              ? { ...own, matchesExpected: false }
+              : own,
+        )
+      })
+      env.waiting.postMessage.mockImplementation(async (request, ports) => {
+        if (
+          request.type === 'GET_STATUS' &&
+          condition.startsWith('wrong-waiting')
+        ) {
+          ports[0]!.postMessage(
+            status(request, {
+              ...candidate,
+              ...(condition === 'wrong-waiting-release'
+                ? { appReleaseId: 'unexpected-release' }
+                : { modelPackageId: 'unexpected-model' }),
+            }),
+          )
+
+          return
+        }
+
+        if (
+          request.type === 'GET_STATUS' &&
+          condition === 'incomplete-waiting'
+        ) {
+          ports[0]!.postMessage(status(request, candidate, false))
+
+          return
+        }
+
+        await waitingReply(request, ports)
+      })
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['preparing', 'prepared', 'activating', 'unknown'] as const)(
+    'never bridges through a non-idle current-release waiting candidate: %s',
+    async (phase) => {
+      const env = environment({
+        uncontrolled: true,
+        expected: candidate,
+        activeIdentity: current,
+        candidateControl: { phase },
+      })
+
+      expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+      expect(env.reload).not.toHaveBeenCalled()
+      expect(
+        env.received.some((request) => request.type === 'ACTIVATE_UPDATE'),
+      ).toBe(false)
+    },
+  )
+
+  it('checks candidate idleness after verifying the old active cache, rather than reusing an earlier idle result', async () => {
+    const env = environment({
+      uncontrolled: true,
+      expected: candidate,
+      activeIdentity: current,
+    })
+
+    await vi.waitFor(() => expect(env.service.current().preparing).toBe(false))
+
+    const reply = env.active.postMessage.getMockImplementation()!
+
+    env.active.postMessage.mockImplementation((request, ports) => {
+      if (request.expected.appReleaseId === current.appReleaseId) {
+        env.candidateControl.phase = 'preparing'
+      }
+
+      reply(request, ports)
+    })
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+    expect(env.reload).not.toHaveBeenCalled()
+  })
+
+  it('rechecks worker lifecycle changes during the additional old-active resource probe', async () => {
+    const env = environment({
+      uncontrolled: true,
+      expected: candidate,
+      activeIdentity: current,
+    })
+
+    await vi.waitFor(() => expect(env.service.current().preparing).toBe(false))
+
+    const reply = env.active.postMessage.getMockImplementation()!
+
+    env.active.postMessage.mockImplementation((request, ports) => {
+      if (request.expected.appReleaseId === current.appReleaseId) {
+        env.waiting.state = 'activating'
+      }
+
+      reply(request, ports)
+    })
+
+    expect(await env.updates.admit(env.service.verifyVersion)).toBe(false)
+    expect(env.reload).not.toHaveBeenCalled()
+  })
+
+  it('uses the new document release budget for bridge recovery and does not loop across recreation', async () => {
+    const first = environment({
+      uncontrolled: true,
+      expected: candidate,
+      activeIdentity: current,
+    })
+
+    await first.updates.admit(first.service.verifyVersion)
+    expect(first.reload).toHaveBeenCalledOnce()
+
+    const recreated = environment({
+      uncontrolled: true,
+      expected: candidate,
+      activeIdentity: current,
+    })
+
+    expect(await recreated.updates.admit(recreated.service.verifyVersion)).toBe(
+      false,
+    )
+    expect(recreated.reload).not.toHaveBeenCalled()
+    await recreated.service.retry()
+    expect(recreated.reload).toHaveBeenCalledOnce()
+    expect(recreated.updates.interaction.blocked.value).toBe(true)
+    await recreated.updates.admit(recreated.service.verifyVersion)
+    expect(recreated.reload).toHaveBeenCalledOnce()
+  })
+
   it('requires actual complete matching bytes instead of an active worker', async () => {
     const { service } = environment({ complete: false })
 

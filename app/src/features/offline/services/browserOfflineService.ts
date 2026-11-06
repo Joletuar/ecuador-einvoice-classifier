@@ -27,6 +27,7 @@ export interface BrowserOfflineOptions {
   baseUrl?: string
   confirm?: (message: string) => boolean
   reload?: () => void
+  canReload?: () => boolean
   expected?: OfflineIdentity
   coordinator?: UpdateCoordinator
   timeoutMs?: number
@@ -64,6 +65,12 @@ export function createBrowserOfflineService(
   let preparedAttempt: string | undefined
   let updating = false
   let reloading = false
+  let retryRecovery = false
+  const recoveryKey = `einvoice:controller-recovery:${JSON.stringify([
+    options.baseUrl ?? import.meta.env.BASE_URL,
+    expected.appReleaseId,
+    expected.modelPackageId,
+  ])}`
 
   let view: OfflineView = {
     tone: FeedbackTone.Neutral,
@@ -281,7 +288,7 @@ export function createBrowserOfflineService(
             label: 'Uso sin conexión',
             tone: complete ? FeedbackTone.Success : FeedbackTone.Warning,
             detail: complete
-              ? 'Puedes abrir la aplicación y clasificar facturas sin internet.'
+              ? 'Puedes abrir la aplicación sin internet.'
               : 'Conéctate a internet y vuelve a intentarlo.',
           },
         ],
@@ -302,6 +309,46 @@ export function createBrowserOfflineService(
     }
   }
 
+  function recoverUncontrolled(stillCurrent: () => boolean) {
+    if (
+      disposed ||
+      reloading ||
+      updating ||
+      coordinator?.isPrepared() ||
+      !options.canReload?.() ||
+      !stillCurrent()
+    ) {
+      return
+    }
+
+    try {
+      const storage = window.sessionStorage
+
+      if (retryRecovery) {
+        retryRecovery = false
+        storage.removeItem(recoveryKey)
+      }
+
+      if (storage.getItem(recoveryKey) !== null) {
+        return
+      }
+
+      storage.setItem(recoveryKey, '1')
+
+      if (
+        storage.getItem(recoveryKey) !== '1' ||
+        !stillCurrent() ||
+        !options.canReload()
+      ) {
+        return
+      }
+
+      reload()
+    } catch {
+      // Sin confirmar el límite persistido no es seguro recargar automáticamente.
+    }
+  }
+
   async function verifyVersion() {
     if (!production) {
       return true
@@ -314,26 +361,50 @@ export function createBrowserOfflineService(
         const controller = workerContainer?.controller
         const active = value.active
         const waiting = value.waiting
+        const installing = value.installing
 
-        if (!active || !controller) {
+        if (!active) {
           return false
         }
 
         const workers = [
-          ...new Set([active, controller, ...(waiting ? [waiting] : [])]),
+          ...new Set([
+            active,
+            ...(controller ? [controller] : []),
+            ...(waiting ? [waiting] : []),
+          ]),
         ]
         const states = workers.map((worker) => worker.state)
 
         const statuses = await Promise.all(
-          [active, controller].map((worker) =>
+          [active, ...(controller ? [controller] : [])].map((worker) =>
             resourceStatus(worker, expected),
           ),
         )
 
         let idle = !waiting
+        let activeBridgeReady = false
 
         if (waiting) {
           const candidate = await resourceStatus(waiting, expected)
+          const reportedActive = statuses[0]!
+
+          if (
+            !controller &&
+            ready(candidate) &&
+            !reportedActive.matchesExpected &&
+            !sameOfflineIdentity(reportedActive.identity, expected)
+          ) {
+            // Una recarga normal debe servir la versión completa del Worker activo,
+            // sin admitir el documento nuevo bajo una versión anterior.
+            const ownStatus = await resourceStatus(
+              active,
+              reportedActive.identity,
+            )
+
+            activeBridgeReady = ready(ownStatus, reportedActive.identity)
+          }
+
           const control = await candidateState(waiting, candidate.identity)
 
           idle = control.phase === OfflinePhase.Idle
@@ -343,13 +414,30 @@ export function createBrowserOfflineService(
           return false
         }
 
-        if (
-          workerContainer?.controller !== controller ||
-          value.active !== active ||
-          value.waiting !== waiting ||
-          workers.some((worker, index) => worker.state !== states[index])
-        ) {
+        const stillCurrent = () =>
+          !disposed &&
+          workerContainer?.controller === controller &&
+          value.active === active &&
+          value.waiting === waiting &&
+          value.installing === installing &&
+          workers.every((worker, index) => worker.state === states[index])
+
+        if (!stillCurrent()) {
           continue
+        }
+
+        if (!controller) {
+          if (
+            active.state === 'activated' &&
+            !installing &&
+            (!waiting || waiting.state === 'installed') &&
+            idle &&
+            (statuses.every((status) => ready(status)) || activeBridgeReady)
+          ) {
+            recoverUncontrolled(stillCurrent)
+          }
+
+          return false
         }
 
         if (
@@ -364,12 +452,21 @@ export function createBrowserOfflineService(
           return false
         }
 
-        return (
+        const verified =
           active.state === 'activated' &&
           controller.state === 'activated' &&
           (!waiting || waiting.state === 'installed') &&
           idle
-        )
+
+        if (verified) {
+          try {
+            window.sessionStorage.removeItem(recoveryKey)
+          } catch {
+            // Una pestaña ya verificada no depende del marcador de recuperación.
+          }
+        }
+
+        return verified
       }
 
       return false
@@ -588,10 +685,19 @@ export function createBrowserOfflineService(
     },
 
     async retry() {
-      await refresh(true)
+      retryRecovery = true
 
-      if (coordinator?.interaction.blocked.value && !coordinator.isPrepared()) {
-        await coordinator.admit(verifyVersion)
+      try {
+        await refresh(true)
+
+        if (
+          coordinator?.interaction.blocked.value &&
+          !coordinator.isPrepared()
+        ) {
+          await coordinator.admit(verifyVersion)
+        }
+      } finally {
+        retryRecovery = false
       }
     },
 

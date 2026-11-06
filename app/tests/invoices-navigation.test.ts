@@ -146,6 +146,14 @@ async function beginConceptDraft() {
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  )
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   vi.stubGlobal('matchMedia', (query: string): MediaQueryList => ({
     matches: false,
@@ -798,6 +806,11 @@ describe('invoice route lifecycle', () => {
       { blocked, message: shallowRef('Esperando…') },
     )
 
+    expect(document.querySelector('main [inert]')).not.toBeNull()
+    expect(document.querySelector('main')?.textContent).not.toContain(
+      'Esperando…',
+    )
+
     button('Eliminar factura de Comercio del barrio').click()
 
     await flushPromises()
@@ -1035,7 +1048,7 @@ describe('invoice route lifecycle', () => {
 
     await flushPromises()
 
-    button('Reintentar consulta').click()
+    button('Reintentar').click()
 
     await flushPromises()
 
