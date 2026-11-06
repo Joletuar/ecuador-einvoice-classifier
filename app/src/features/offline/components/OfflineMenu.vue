@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Loader2,
+  RefreshCw,
   XCircle,
 } from 'lucide-vue-next'
 import {
@@ -101,7 +102,7 @@ const labels = {
     <PopoverTrigger as-child>
       <button
         type="button"
-        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface px-2 py-1 text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:gap-1.5 sm:px-3"
+        class="relative inline-flex shrink-0 items-center gap-1 overflow-visible rounded-full border border-line bg-surface px-2 py-1 text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:gap-1.5 sm:px-3"
       >
         <span
           class="h-2 w-2 rounded-full"
@@ -109,6 +110,13 @@ const labels = {
           aria-hidden="true"
         />
         <span>{{ labels[view.tone] }}</span>
+        <template v-if="view.updateAvailable">
+          <span
+            aria-hidden="true"
+            class="pointer-events-none absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-amber-400 ring-2 ring-surface motion-safe:animate-pulse"
+          />
+          <span class="sr-only">Actualización disponible</span>
+        </template>
         <ChevronDown
           :size="14"
           aria-hidden="true"
@@ -123,6 +131,19 @@ const labels = {
         class="z-60 flex max-h-[min(36rem,var(--reka-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-card border border-line bg-surface p-4 text-left shadow-lg"
       >
         <h2 class="shrink-0 text-sm font-bold text-ink">Estado sin conexión</h2>
+        <Button
+          v-if="view.updateAvailable"
+          type="button"
+          class="mt-3 w-full shrink-0 gap-2"
+          :disabled="view.updatePending"
+          @click="emit('update')"
+        >
+          <RefreshCw
+            class="size-4"
+            aria-hidden="true"
+          />
+          {{ view.updateLabel }}
+        </Button>
         <p
           class="mt-3 flex shrink-0 items-start gap-2 text-sm"
           :class="
@@ -224,16 +245,6 @@ const labels = {
             </span>
           </li>
         </ul>
-        <Button
-          v-if="view.updateAvailable"
-          type="button"
-          variant="outline"
-          class="mt-3 w-full shrink-0"
-          :disabled="view.updatePending"
-          @click="emit('update')"
-        >
-          {{ view.updateLabel }}
-        </Button>
       </PopoverContent>
     </PopoverPortal>
   </PopoverRoot>

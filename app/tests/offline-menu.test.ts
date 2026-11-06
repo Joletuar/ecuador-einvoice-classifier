@@ -102,4 +102,37 @@ describe('one offline recovery control', () => {
     expect(wrapper.emitted('retry')).toBeUndefined()
     expect(wrapper.emitted('update')).toBeUndefined()
   })
+
+  it('prioritizes the update action and keeps its attention hint until the backend clears availability', async () => {
+    const { wrapper, view } = menu()
+    const trigger = wrapper.findAll('button')[0]!
+    const update = wrapper
+      .findAll('button')
+      .filter((button) => button.text() === view.updateLabel)
+
+    expect(trigger.text()).toContain('Actualización disponible')
+    expect(update).toHaveLength(1)
+    expect(update[0]!.classes()).toContain('bg-primary')
+    expect(update[0]!.find('svg[aria-hidden="true"]').exists()).toBe(true)
+    expect(
+      wrapper
+        .findAll('p')
+        .some((paragraph) => paragraph.text() === 'Actualización disponible'),
+    ).toBe(false)
+    expect(wrapper.text().indexOf(view.updateLabel)).toBeLessThan(
+      wrapper.text().indexOf(view.label),
+    )
+    await update[0]!.trigger('click')
+    expect(wrapper.emitted('update')).toEqual([[]])
+    expect(trigger.text()).toContain('Actualización disponible')
+
+    await wrapper.setProps({ view: { ...view, updateAvailable: false } })
+
+    expect(trigger.text()).not.toContain('Actualización disponible')
+    expect(
+      wrapper
+        .findAll('button')
+        .some((button) => button.text() === view.updateLabel),
+    ).toBe(false)
+  })
 })
