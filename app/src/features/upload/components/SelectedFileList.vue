@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, Clock3, FileArchive, FileText, X } from 'lucide-vue-next'
+import { pendingFileMessage } from '../presentation/processingMessages'
 import AnimatedScrollList from '../../../shared/ui/AnimatedScrollList.vue'
 import Button from '../../../shared/ui/button/Button.vue'
 import { formatBytes, type SelectedFile } from '../model/selection'
@@ -74,7 +75,7 @@ const open = defineModel<boolean>('open', { default: false })
             v-else-if="entry.failure"
             class="mt-1 break-words text-sm text-danger"
           >
-            {{ entry.failure }}
+            {{ pendingFileMessage }}
           </p>
         </div>
         <span

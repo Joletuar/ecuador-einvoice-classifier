@@ -10,6 +10,7 @@ import {
 import { computed } from 'vue'
 import { AlertCircle, AlertTriangle, CheckCircle } from 'lucide-vue-next'
 
+import { batchActivityMessage } from '../presentation/processingMessages'
 import { FeedbackTone } from '../../../shared/ui/feedbackTone'
 import ProgressBar from '../../../shared/ui/ProgressBar.vue'
 import Button from '../../../shared/ui/button/Button.vue'
@@ -26,6 +27,8 @@ const {
   selectionSize?: string
 }>()
 const emit = defineEmits<{ cancel: [] }>()
+
+const message = computed(() => batchActivityMessage(activity))
 
 const warning = computed(() => activity.tone === FeedbackTone.Warning)
 const running = computed(() =>
@@ -194,7 +197,7 @@ const label = computed(() => {
     </div>
     <p
       v-if="
-        activity.message &&
+        message &&
         [
           ActivityPhase.Failed,
           ActivityPhase.Cancelled,
@@ -205,7 +208,7 @@ const label = computed(() => {
       class="text-sm"
       :class="warning ? 'text-warning' : 'text-danger'"
     >
-      {{ activity.message }}
+      {{ message }}
     </p>
     <p
       class="sr-only"

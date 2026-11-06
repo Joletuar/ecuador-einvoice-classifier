@@ -209,7 +209,7 @@ describe('real upload presentation', () => {
     ).toMatchObject({ duplicates: 2, saved: 0 })
   })
 
-  it('shows loading, ready and failed preparation and retries the real injected capability', async () => {
+  it('keeps processing disabled until ready without duplicate preparation notices or retry controls', async () => {
     let state: PreparationState = { kind: 'loading' }
     const listeners = new Set<(state: PreparationState) => void>()
     const port: ProcessingService = {
@@ -247,37 +247,49 @@ describe('real upload presentation', () => {
     expect(
       action(wrapper, 'Procesar archivos').attributes('disabled'),
     ).toBeDefined()
-    expect(wrapper.text()).toContain('Preparando el modelo')
+    expect(wrapper.text()).not.toContain('Preparando el modelo')
     state = { kind: 'error', message: 'Paquete no disponible' }
     listeners.forEach((listener) => listener(state))
 
     await flushPromises()
-    await action(wrapper, 'Volver a intentar').trigger('click')
+    expect(wrapper.text()).not.toContain('Paquete no disponible')
+    expect(
+      wrapper
+        .findAll('button')
+        .some((button) => button.text().includes('intentar')),
+    ).toBe(false)
+    await port.prepare()
     await flushPromises()
 
     expect(port.prepare).toHaveBeenCalledOnce()
     expect(
       action(wrapper, 'Procesar archivos').attributes('disabled'),
     ).toBeUndefined()
-    expect(wrapper.text()).toContain('Todo listo para procesar tus facturas.')
+    expect(wrapper.text()).not.toContain(
+      'Todo listo para procesar tus facturas.',
+    )
   })
 
-  it('shows migration/storage errors inline with a usable retry', async () => {
+  it('keeps storage preconditions without duplicate inline storage notices or retry controls', async () => {
     const { wrapper, store } = mountUpload()
 
     store.snapshot = {
       kind: 'error',
-      code: 'storage-migration-required',
-      message:
-        'No se pueden convertir los datos existentes. La colección se conserva.',
+      code: 'storage-unavailable',
+      message: 'No se pudo consultar el almacenamiento.',
     }
 
     await flushPromises()
 
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      'La colección se conserva',
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(
+      'No se pudo consultar el almacenamiento.',
     )
-    expect(action(wrapper, 'Reintentar consulta').exists()).toBe(true)
+    expect(
+      wrapper
+        .findAll('button')
+        .some((button) => button.text().includes('Reintentar')),
+    ).toBe(false)
     expect(wrapper.getComponent(FileDropzone).props('disabled')).toBe(true)
   })
 
@@ -441,8 +453,11 @@ describe('real upload presentation', () => {
 
     wrappers.push(result)
     expect(result.text()).toContain('Con incidencias')
-    expect(result.text()).toContain('INVALID_ZIP')
-    expect(result.text()).toContain('archivo truncado.')
+    expect(result.text()).not.toContain('INVALID_ZIP')
+    expect(result.text()).not.toContain('archivo truncado.')
+    expect(result.text()).toContain(
+      'Se guardaron facturas, pero hubo inconvenientes durante el procesamiento.',
+    )
     expect(result.text()).not.toContain('1 factura guardada.')
     expect(result.text()).not.toContain('Ya existe un archivo con este nombre.')
   })
@@ -840,11 +855,119 @@ describe('selected-file heading count', () => {
       }
 
       expect(selected.text()).toContain('new.xml')
-      expect(results.text()).toContain(failure.message)
+      expect(results.text()).not.toContain(failure.message)
+      expect(results.text()).toContain(
+        'Hubo un problema al procesar este archivo.',
+      )
     } finally {
       selected.unmount()
       results.unmount()
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('plain language file outcomes', () => {
+  it('uses one short sentence per file even for long XML/ZIP technical payloads', () => {
+    const technical = Array.from(
+      { length: 25 },
+      (_, index) =>
+        `nested/${index}.xml: INVALID_XML: claveAcceso ${'1'.repeat(49)}`,
+    ).join(' ')
+    const wrapper = mount(ProcessingResults, {
+      props: {
+        open: true,
+        attemptId: 4,
+        results: [
+          {
+            id: 'broken',
+            name: 'broken.zip',
+            status: 'error',
+            retryable: false,
+            message: technical,
+            issues: [technical],
+          },
+          {
+            id: 'partial',
+            name: 'partial.zip',
+            status: 'added',
+            invoices: [invoiceFixture()],
+            message: technical,
+            issues: [technical],
+          },
+          {
+            id: 'pending',
+            name: 'pending.zip',
+            status: 'error',
+            retryable: true,
+            message: technical,
+            issues: [technical],
+          },
+        ],
+      },
+    })
+
+    wrappers.push(wrapper)
+
+    const rows = wrapper.findAll('[data-row-key]')
+
+    expect(rows).toHaveLength(3)
+    expect(rows[0]!.text()).toContain(
+      'Hubo un problema al procesar este archivo.',
+    )
+    expect(rows[1]!.text()).toContain(
+      'Se guardaron facturas, pero hubo inconvenientes durante el procesamiento.',
+    )
+    expect(rows[2]!.text()).toContain(
+      'El procesamiento quedó pendiente y puedes volver a intentarlo.',
+    )
+
+    for (const row of rows) {
+      expect(row.findAll('p')).toHaveLength(2)
+    }
+
+    expect(wrapper.text()).not.toContain('INVALID_XML')
+    expect(wrapper.text()).not.toContain('nested/')
+    expect(wrapper.text()).not.toContain('1'.repeat(49))
+    expect(rows[0]!.text()).not.toContain('volver a intentarlo')
+    expect(rows[2]!.text()).toContain('Pendiente')
+  })
+
+  it('keeps technical details out of retained selections and failed processing activity', () => {
+    const technical = 'part/one.xml: INVALID_XML: claveAcceso de 49 dígitos'
+    const selection = mount(SelectedFileList, {
+      props: {
+        open: true,
+        files: [
+          {
+            id: 'pending',
+            file: new File(['xml'], 'pending.zip'),
+            failure: technical,
+          },
+        ],
+      },
+    })
+    const activity = mount(BatchActivityPanel, {
+      props: {
+        activity: {
+          operation: 'processing',
+          phase: 'failed',
+          metric: 'finished',
+          completed: 0,
+          total: 1,
+          message: technical,
+        },
+      },
+    })
+
+    wrappers.push(selection, activity)
+    expect(selection.text()).toContain(
+      'El procesamiento quedó pendiente y puedes volver a intentarlo.',
+    )
+    expect(activity.text()).toContain(
+      'Hubo un problema al procesar los archivos.',
+    )
+    expect(selection.text()).not.toContain(technical)
+    expect(activity.text()).not.toContain(technical)
   })
 })

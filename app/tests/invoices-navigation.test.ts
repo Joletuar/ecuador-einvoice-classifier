@@ -973,7 +973,7 @@ describe('invoice route lifecycle', () => {
     })
 
     expect(runtime.router.currentRoute.value.name).toBe('invoices')
-    expect(button('Mis facturas').disabled).toBe(true)
+    expect(button('Facturas').disabled).toBe(true)
     expect(
       document.querySelector('main [role="alert"]')?.textContent,
     ).toContain('Integración pendiente.')
@@ -1012,7 +1012,7 @@ describe('invoice route lifecycle', () => {
       kind: 'ready',
       invoices: [],
     })
-    expect(button('Mis facturas').disabled).toBe(true)
+    expect(button('Facturas').disabled).toBe(true)
     expect(document.getElementById('summary-heading')).toBeNull()
   })
 

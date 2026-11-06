@@ -6,7 +6,6 @@ import { ArrowRight, ShieldCheck } from 'lucide-vue-next'
 import { InvoiceSnapshotKind } from '../../invoices/domain/invoiceSnapshot'
 import { ActivityOperation, ActivityPhase } from '../model/activity'
 import { FeedbackTone } from '../../../shared/ui/feedbackTone'
-import { PreparationKind } from '../model/processingStatus'
 import { RouteName } from '../../../app/router/routeNames'
 import { useStorageLimits } from '../../../app/config/storageLimits'
 import Button from '../../../shared/ui/button/Button.vue'
@@ -23,7 +22,6 @@ import { useProcessingService } from '../services/processingService'
 import { useProcessingAvailability } from '../stores/useProcessingAvailability'
 import { useLeaveProtection } from '../../../app/composables/useLeaveProtection'
 import { useUpdateInteraction } from '../../../app/updateCoordinator'
-import { useOfflineService } from '../../offline/services/offlineService'
 
 const limits = useStorageLimits()
 const service = useProcessingService()
@@ -31,20 +29,6 @@ const availability = useProcessingAvailability()
 const invoices = useInvoiceStore()
 const router = useRouter()
 const interaction = useUpdateInteraction()
-const offline = useOfflineService()
-
-async function retryPreparation() {
-  if (interaction?.blocked.value) {
-    return
-  }
-
-  await offline.retry()
-
-  if (!interaction?.blocked.value) {
-    await availability.retry()
-  }
-}
-
 const storageReady = computed(
   () => invoices.snapshot.kind === InvoiceSnapshotKind.Ready,
 )
@@ -278,26 +262,6 @@ watch(
           Carga tus archivos para empezar a clasificarlos.
         </p>
       </header>
-      <div
-        v-if="invoices.snapshot.kind === InvoiceSnapshotKind.Error"
-        role="alert"
-        class="grid justify-items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft p-4 text-sm"
-      >
-        <p>{{ invoices.snapshot.message }}</p>
-        <Button
-          variant="outline"
-          @click="invoices.refresh()"
-        >
-          Reintentar consulta
-        </Button>
-      </div>
-      <p
-        v-else-if="!storageReady"
-        role="status"
-        class="text-sm text-ink-muted"
-      >
-        Consultando almacenamiento local…
-      </p>
       <FileDropzone
         :disabled="
           !storageReady || controlsBlocked || selection.unresolved.value
@@ -324,25 +288,6 @@ watch(
           selection.busy.value ? selection.cancel() : processing.cancel()
         "
       />
-      <p
-        role="status"
-        class="text-xs text-ink-muted"
-      >
-        {{
-          availability.available
-            ? 'Todo listo para procesar tus facturas.'
-            : availability.issue
-        }}
-      </p>
-      <Button
-        v-if="availability.state.kind === PreparationKind.Error"
-        variant="outline"
-        class="justify-self-start"
-        :disabled="interaction?.blocked.value"
-        @click="retryPreparation"
-      >
-        Volver a intentar
-      </Button>
       <section
         aria-label="Importación de archivos"
         :aria-busy="busy"

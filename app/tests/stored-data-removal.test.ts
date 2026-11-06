@@ -276,7 +276,7 @@ describe('stored-data deletion workflow', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(runtime.router.currentRoute.value.name).toBe('upload')
     expect(document.activeElement).toBe(button('Almacenamiento'))
-    expect(button('Mis facturas').disabled).toBe(true)
+    expect(button('Facturas').disabled).toBe(true)
 
     await openStorage()
 

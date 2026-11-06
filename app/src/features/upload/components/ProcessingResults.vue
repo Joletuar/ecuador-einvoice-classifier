@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle, Copy, File } from 'lucide-vue-next'
 
+import { fileResultMessage } from '../presentation/processingMessages'
 import { FileResultStatus } from '../model/processingStatus'
 import AnimatedScrollList from '../../../shared/ui/AnimatedScrollList.vue'
 import type {
@@ -123,11 +124,13 @@ const visual = {
             v-if="
               result.status === FileResultStatus.Error ||
               result.retryable ||
-              result.issues?.length
+              result.issues?.length ||
+              result.counts?.failedXml ||
+              result.counts?.omittedEntries
             "
             class="mt-1 break-words text-xs text-ink-muted"
           >
-            {{ result.message }}
+            {{ fileResultMessage(result) }}
           </p>
         </div>
         <span
