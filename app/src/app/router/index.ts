@@ -4,6 +4,7 @@ import { RouteName } from './routeNames'
 import AppLayout from '../layouts/AppLayout.vue'
 import InvoicesPage from '../../features/invoices/pages/InvoicesPage.vue'
 import UploadPage from '../../features/upload/pages/UploadPage.vue'
+import InformationPage from '../../features/information/pages/InformationPage.vue'
 
 export function createAppRouter(
   history: RouterHistory = createWebHistory(import.meta.env.BASE_URL),
@@ -32,6 +33,11 @@ export function createAppRouter(
             path: 'invoices',
             name: RouteName.Invoices,
             component: InvoicesPage,
+          },
+          {
+            path: 'information',
+            name: RouteName.Information,
+            component: InformationPage,
           },
         ],
       },

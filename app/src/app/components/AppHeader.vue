@@ -61,6 +61,13 @@ const navigationClass =
         >
           Facturas
         </RouterLink>
+        <RouterLink
+          :to="{ name: RouteName.Information }"
+          :class="navigationClass"
+          active-class="underline underline-offset-8 decoration-2 text-primary"
+        >
+          Información
+        </RouterLink>
       </nav>
       <div
         class="ml-auto flex max-w-full items-center justify-end gap-1.5 sm:gap-2"

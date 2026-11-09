@@ -6,10 +6,15 @@ import { flushPromises } from '@vue/test-utils'
 import { nextTick, shallowRef } from 'vue'
 import { createMemoryHistory } from 'vue-router'
 import { createApplication } from '../src/app/createApplication'
+import { RouteName } from '../src/app/router/routeNames'
 import { createUnavailableInvoiceService } from '../src/features/invoices/services/unavailableInvoiceService'
 import { createIndexedDbInvoiceService } from '../src/features/invoices/services/indexedDbInvoiceService'
 import type { InvoiceService } from '../src/features/invoices/services/invoiceService'
 import { createUnavailableProcessingService } from '../src/features/upload/services/unavailableProcessingService'
+import type {
+  ProcessingOutcome,
+  ProcessingService,
+} from '../src/features/upload/services/processingService'
 import type { OfflineService } from '../src/features/offline/services/offlineService'
 import type { Result } from '../src/shared/lib/result'
 import { toast } from 'vue-sonner'
@@ -64,6 +69,7 @@ function deferred<T>() {
 async function startApplication(
   overrides: Partial<InvoiceService> = {},
   interaction?: UpdateInteraction,
+  options: { path?: string; processing?: ProcessingService } = {},
 ) {
   const runtime = createApplication({
     limits: { maxFiles: 500, maxTotalBytes: 104857600 },
@@ -79,7 +85,7 @@ async function startApplication(
 
         ...overrides,
       },
-      processing: createUnavailableProcessingService(),
+      processing: options.processing ?? createUnavailableProcessingService(),
       offline: offlineService(),
     },
   })
@@ -88,7 +94,7 @@ async function startApplication(
     runtime.app.provide(updateInteractionKey, interaction)
   }
 
-  await runtime.router.push('/invoices')
+  await runtime.router.push(options.path ?? '/invoices')
   await runtime.router.isReady()
   await runtime.invoices.initialize()
 
@@ -112,6 +118,20 @@ function button(name: string): HTMLButtonElement {
 
   if (!result) {
     throw new Error(`Missing button: ${name}`)
+  }
+
+  return result
+}
+
+function navigationLink(name: string): HTMLAnchorElement {
+  const result = [
+    ...document.querySelectorAll<HTMLAnchorElement>(
+      'nav[aria-label="Navegación principal"] a',
+    ),
+  ].find((element) => element.textContent?.trim() === name)
+
+  if (!result) {
+    throw new Error(`Missing navigation link: ${name}`)
   }
 
   return result
@@ -185,6 +205,184 @@ afterEach(() => {
 })
 
 describe('invoice route lifecycle', () => {
+  it('opens Information directly without invoices and removes its players when navigating away', async () => {
+    const runtime = await startApplication(
+      { read: () => ({ ok: true, value: invoiceDataFixture([]) }) },
+      undefined,
+      { path: '/information' },
+    )
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Information)
+    expect(button('Facturas').disabled).toBe(true)
+    expect(navigationLink('Información').getAttribute('aria-current')).toBe(
+      'page',
+    )
+    expect(document.querySelector('main h1')?.textContent).toBe(
+      'Sobre Mis facturas',
+    )
+
+    const players = [...document.querySelectorAll('main iframe')]
+
+    expect(players).toHaveLength(2)
+    navigationLink('Cargar').click()
+
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Upload)
+    expect(document.querySelector('main iframe')).toBeNull()
+    expect(players.every((player) => !player.isConnected)).toBe(true)
+    navigationLink('Información').click()
+
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Information)
+    expect(document.querySelectorAll('main iframe')).toHaveLength(2)
+    expect(document.querySelector('main iframe')).not.toBe(players[0])
+    expect(button('Facturas').disabled).toBe(true)
+
+    await runtime.router.push('/invoices')
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Upload)
+  })
+
+  it('closes a clean invoice detail on leaving for Information and keeps it closed on return', async () => {
+    const runtime = await startApplication()
+
+    button('Ver detalles de Comercio del barrio').click()
+
+    await flushPromises()
+
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Detalle de factura',
+    )
+
+    await runtime.router.push('/information')
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Information)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    navigationLink('Facturas').click()
+
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Invoices)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(button('Ver detalles de Comercio del barrio')).toBeDefined()
+  })
+
+  it('blocks Information while processing and resets upload selection and results only after committed departure', async () => {
+    const pending = deferred<Result<ProcessingOutcome>>()
+    const process = vi.fn<ProcessingService['process']>(() => pending.promise)
+    const runtime = await startApplication({}, undefined, {
+      path: '/invoices/upload',
+      processing: {
+        ...createUnavailableProcessingService(),
+        available: true,
+        state: { kind: 'ready' },
+
+        subscribe(listener) {
+          listener({ kind: 'ready' })
+
+          return () => {}
+        },
+
+        process,
+      },
+    })
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')
+
+    if (!input) {
+      throw new Error('Missing file picker')
+    }
+
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [new File(['<factura />'], 'pending.xml')],
+    })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await nextTick()
+
+    expect(button('Procesar archivos').disabled).toBe(true)
+
+    await runtime.router.push('/information')
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Upload)
+
+    await vi.waitFor(() =>
+      expect(button('Procesar archivos').disabled).toBe(false),
+    )
+
+    const removeGuard = runtime.router.beforeEach((to) =>
+      to.name === RouteName.Information ? false : true,
+    )
+
+    await runtime.router.push('/information')
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Upload)
+    expect(document.querySelector('main')?.textContent).toContain('pending.xml')
+    expect(button('Procesar archivos').disabled).toBe(false)
+    removeGuard()
+    button('Procesar archivos').click()
+
+    await vi.waitFor(() => expect(process).toHaveBeenCalledOnce())
+
+    await runtime.router.push('/information')
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Upload)
+
+    const selected = process.mock.calls[0]![0][0]!
+
+    pending.resolve({
+      ok: true,
+      value: {
+        kind: 'completed',
+        files: [
+          {
+            id: selected.id,
+            name: selected.file.name,
+            status: 'error',
+            message: 'No se pudo leer el XML.',
+            retryable: true,
+          },
+        ],
+        summary: { added: 0, duplicates: 0, failed: 1, saved: 0 },
+      },
+    })
+
+    await flushPromises()
+
+    expect(
+      [
+        ...document.querySelectorAll(
+          '[aria-label="Resumen confirmado de archivos"] dd',
+        ),
+      ].map((count) => count.textContent?.trim()),
+    ).toEqual(['0', '0', '1'])
+
+    await runtime.router.push('/information')
+    await flushPromises()
+
+    expect(runtime.router.currentRoute.value.name).toBe(RouteName.Information)
+
+    await runtime.router.push('/invoices/upload')
+    await flushPromises()
+
+    expect(button('Procesar archivos').disabled).toBe(true)
+    expect(document.querySelector('main')?.textContent).not.toContain(
+      'pending.xml',
+    )
+    expect(
+      [
+        ...document.querySelectorAll(
+          '[aria-label="Resumen confirmado de archivos"] dd',
+        ),
+      ].map((count) => count.textContent?.trim()),
+    ).toEqual(['0', '0', '0'])
+  })
+
   it('uses the visible issuer fallback in all accessible action names', async () => {
     await startApplication({
       read: () => ({
@@ -670,88 +868,105 @@ describe('invoice route lifecycle', () => {
     ).toHaveLength(8)
   })
 
-  it('preserves a draft and its native unload warning when discard is canceled', async () => {
-    const runtime = await startApplication()
+  it.each(['/invoices/upload', '/information'])(
+    'preserves a draft and its native unload warning when departure to %s is canceled',
+    async (destination) => {
+      const runtime = await startApplication()
 
-    await beginConceptDraft()
+      await beginConceptDraft()
 
-    const unload = new Event('beforeunload', { cancelable: true })
+      const unload = new Event('beforeunload', { cancelable: true })
 
-    window.dispatchEvent(unload)
-    expect(unload.defaultPrevented).toBe(true)
+      window.dispatchEvent(unload)
+      expect(unload.defaultPrevented).toBe(true)
 
-    const navigating = runtime.router.push('/invoices/upload')
+      const navigating = runtime.router.push(destination)
 
-    await flushPromises()
+      await flushPromises()
 
-    expect(
-      [...document.querySelectorAll('[role="dialog"]')].some((dialog) =>
-        dialog.textContent?.includes('Descartar corrección'),
-      ),
-    ).toBe(true)
-    button('Cancelar').click()
+      expect(
+        [...document.querySelectorAll('[role="dialog"]')].some((dialog) =>
+          dialog.textContent?.includes('Descartar corrección'),
+        ),
+      ).toBe(true)
+      button('Cancelar').click()
 
-    await navigating
-    await flushPromises()
+      await navigating
+      await flushPromises()
 
-    expect(runtime.router.currentRoute.value.name).toBe('invoices')
-    expect(categorySelect().value).toBe('Salud')
+      expect(runtime.router.currentRoute.value.name).toBe('invoices')
+      expect(categorySelect().value).toBe('Salud')
+      expect(categorySelect().disabled).toBe(false)
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        'Detalle de factura',
+      )
 
-    button('Cancelar edición de Fruta').click()
+      button('Cancelar edición de Fruta').click()
 
-    await nextTick()
+      await nextTick()
 
-    const cleanUnload = new Event('beforeunload', { cancelable: true })
+      const cleanUnload = new Event('beforeunload', { cancelable: true })
 
-    window.dispatchEvent(cleanUnload)
-    expect(cleanUnload.defaultPrevented).toBe(false)
-  })
+      window.dispatchEvent(cleanUnload)
+      expect(cleanUnload.defaultPrevented).toBe(false)
+    },
+  )
 
-  it('keeps discard provisional until all later guards accept navigation', async () => {
-    const runtime = await startApplication()
+  it.each(['/invoices/upload', '/information'])(
+    'keeps discard provisional until all later guards accept departure to %s',
+    async (destination) => {
+      const runtime = await startApplication()
 
-    await beginConceptDraft()
+      await beginConceptDraft()
 
-    const laterGuard = deferred<boolean>()
-    const removeGuard = runtime.router.beforeEach((to) =>
-      to.name === 'upload' ? laterGuard.promise : true,
-    )
-    const navigating = runtime.router.push('/invoices/upload')
+      const laterGuard = deferred<boolean>()
+      const removeGuard = runtime.router.beforeEach((to) =>
+        to.path === destination ? laterGuard.promise : true,
+      )
+      const navigating = runtime.router.push(destination)
 
-    await flushPromises()
+      await flushPromises()
 
-    button('Descartar').click()
+      button('Descartar').click()
 
-    await flushPromises()
+      await flushPromises()
 
-    expect(categorySelect().value).toBe('Salud')
-    expect(categorySelect().disabled).toBe(true)
-    laterGuard.resolve(false)
+      expect(categorySelect().value).toBe('Salud')
+      expect(categorySelect().disabled).toBe(true)
+      laterGuard.resolve(false)
 
-    await navigating
-    await flushPromises()
+      await navigating
+      await flushPromises()
 
-    expect(runtime.router.currentRoute.value.name).toBe('invoices')
-    expect(categorySelect().value).toBe('Salud')
-    expect(categorySelect().disabled).toBe(false)
-    removeGuard()
+      expect(runtime.router.currentRoute.value.name).toBe('invoices')
+      expect(categorySelect().value).toBe('Salud')
+      expect(categorySelect().disabled).toBe(false)
+      removeGuard()
 
-    const accepted = runtime.router.push('/invoices/upload')
+      const accepted = runtime.router.push(destination)
 
-    await flushPromises()
+      await flushPromises()
 
-    button('Descartar').click()
+      button('Descartar').click()
 
-    await accepted
-    await flushPromises()
+      await accepted
+      await flushPromises()
 
-    expect(runtime.router.currentRoute.value.name).toBe('upload')
+      expect(runtime.router.currentRoute.value.path).toBe(destination)
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
 
-    const unload = new Event('beforeunload', { cancelable: true })
+      const unload = new Event('beforeunload', { cancelable: true })
 
-    window.dispatchEvent(unload)
-    expect(unload.defaultPrevented).toBe(false)
-  })
+      window.dispatchEvent(unload)
+      expect(unload.defaultPrevented).toBe(false)
+
+      await runtime.router.push('/invoices')
+      await flushPromises()
+
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(runtime.protection.isDirty()).toBe(false)
+    },
+  )
 
   it('keeps the real discard reservation reversible until activation is observed', async () => {
     const runtime = await startApplication()
@@ -830,75 +1045,81 @@ describe('invoice route lifecycle', () => {
     )
   })
 
-  it('blocks route changes while an invoice correction is being saved', async () => {
-    const pending = deferred<Result<InvoiceData>>()
+  it.each(['/invoices/upload', '/information'])(
+    'blocks departure to %s while an invoice correction is being saved',
+    async (destination) => {
+      const pending = deferred<Result<InvoiceData>>()
 
-    const runtime = await startApplication({ correct: () => pending.promise })
+      const runtime = await startApplication({ correct: () => pending.promise })
 
-    await beginConceptDraft()
+      await beginConceptDraft()
 
-    button('Guardar cambios de Fruta').click()
+      button('Guardar cambios de Fruta').click()
 
-    await nextTick()
-    await runtime.router.push('/invoices/upload')
+      await nextTick()
+      await runtime.router.push(destination)
 
-    expect(runtime.router.currentRoute.value.name).toBe('invoices')
-    expect(categorySelect().disabled).toBe(true)
-    pending.resolve({
-      ok: true,
-      value: invoiceDataFixture([invoiceFixture()]),
-    })
+      expect(runtime.router.currentRoute.value.name).toBe('invoices')
+      expect(categorySelect().disabled).toBe(true)
+      pending.resolve({
+        ok: true,
+        value: invoiceDataFixture([invoiceFixture()]),
+      })
 
-    await flushPromises()
-    await runtime.router.push('/invoices/upload')
+      await flushPromises()
+      await runtime.router.push(destination)
 
-    expect(runtime.router.currentRoute.value.name).toBe('upload')
-  })
+      expect(runtime.router.currentRoute.value.path).toBe(destination)
+    },
+  )
 
-  it('preserves and unlocks a draft when a later guard throws', async () => {
-    const runtime = await startApplication()
+  it.each(['/invoices/upload', '/information'])(
+    'preserves and unlocks a draft when a later guard throws on departure to %s',
+    async (destination) => {
+      const runtime = await startApplication()
 
-    await beginConceptDraft()
+      await beginConceptDraft()
 
-    const removeGuard = runtime.router.beforeEach((to) => {
-      if (to.name === 'upload') {
-        throw new Error('Later navigation failed')
-      }
-    })
-    const navigating = runtime.router.push('/invoices/upload')
-    const failure = navigating.catch((error: unknown) => error)
+      const removeGuard = runtime.router.beforeEach((to) => {
+        if (to.path === destination) {
+          throw new Error('Later navigation failed')
+        }
+      })
+      const navigating = runtime.router.push(destination)
+      const failure = navigating.catch((error: unknown) => error)
 
-    await flushPromises()
+      await flushPromises()
 
-    button('Descartar').click()
-    expect(await failure).toBeInstanceOf(Error)
+      button('Descartar').click()
+      expect(await failure).toBeInstanceOf(Error)
 
-    await flushPromises()
+      await flushPromises()
 
-    expect(runtime.router.currentRoute.value.name).toBe('invoices')
-    expect(categorySelect().value).toBe('Salud')
-    expect(categorySelect().disabled).toBe(false)
+      expect(runtime.router.currentRoute.value.name).toBe('invoices')
+      expect(categorySelect().value).toBe('Salud')
+      expect(categorySelect().disabled).toBe(false)
 
-    categorySelect().value = 'Vivienda'
-    categorySelect().dispatchEvent(new Event('change', { bubbles: true }))
+      categorySelect().value = 'Vivienda'
+      categorySelect().dispatchEvent(new Event('change', { bubbles: true }))
 
-    await nextTick()
+      await nextTick()
 
-    expect(categorySelect().value).toBe('Vivienda')
+      expect(categorySelect().value).toBe('Vivienda')
 
-    removeGuard()
+      removeGuard()
 
-    const accepted = runtime.router.push('/invoices/upload')
+      const accepted = runtime.router.push(destination)
 
-    await flushPromises()
+      await flushPromises()
 
-    button('Descartar').click()
+      button('Descartar').click()
 
-    await accepted
-    await flushPromises()
+      await accepted
+      await flushPromises()
 
-    expect(runtime.router.currentRoute.value.name).toBe('upload')
-  })
+      expect(runtime.router.currentRoute.value.path).toBe(destination)
+    },
+  )
 
   it('redirects after the last invoice is authoritatively removed', async () => {
     const remove = vi.fn<InvoiceService['remove']>(() => ({
@@ -927,54 +1148,122 @@ describe('invoice route lifecycle', () => {
     expect(runtime.router.currentRoute.value.name).toBe('upload')
   })
 
-  it('retains list filters, page size and expanded rows after revisiting the route', async () => {
-    const runtime = await startApplication()
+  it.each(['/invoices/upload', '/information'])(
+    'retains list filters, current page, page size and expanded rows after visiting %s',
+    async (destination) => {
+      const runtime = await startApplication({
+        read: () => ({
+          ok: true,
+          value: invoiceDataFixture(
+            Array.from({ length: 35 }, (_, index) =>
+              invoiceFixture({
+                id: `invoice-${index + 1}`,
+                issuer: `Comercio ${index + 1}`,
+              }),
+            ),
+          ),
+        }),
+      })
 
-    const query = document.querySelector<HTMLInputElement>(
-      'input[placeholder="Emisor o número"]',
-    )
-
-    if (!query) {
-      throw new Error('Missing search field')
-    }
-
-    query.value = 'Comercio'
-    query.dispatchEvent(new Event('input', { bubbles: true }))
-
-    const pageSize = [...document.querySelectorAll('select')].find((select) =>
-      select.querySelector('option[value="30"]'),
-    )
-
-    if (!pageSize) {
-      throw new Error('Missing page size')
-    }
-
-    pageSize.value = '30'
-    pageSize.dispatchEvent(new Event('change', { bubbles: true }))
-    button('Mostrar conceptos de Comercio del barrio').click()
-
-    await nextTick()
-    await runtime.router.push('/invoices/upload')
-    await flushPromises()
-    await runtime.router.push('/invoices')
-    await flushPromises()
-
-    expect(
-      document.querySelector<HTMLInputElement>(
+      const query = document.querySelector<HTMLInputElement>(
         'input[placeholder="Emisor o número"]',
-      )?.value,
-    ).toBe('Comercio')
-    expect(
-      [...document.querySelectorAll('select')].find((select) =>
+      )
+
+      if (!query) {
+        throw new Error('Missing search field')
+      }
+
+      query.value = 'Comercio'
+      query.dispatchEvent(new Event('input', { bubbles: true }))
+
+      for (const [label, value] of [
+        ['Año', '2026'],
+        ['Categoría', 'Alimentación'],
+      ]) {
+        const field = [...document.querySelectorAll('label')]
+          .find((element) => element.firstChild?.textContent?.trim() === label)
+          ?.querySelector('select')
+
+        if (!field || !value) {
+          throw new Error('Missing invoice filter')
+        }
+
+        field.value = value
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+
+      const pageSize = [...document.querySelectorAll('select')].find((select) =>
         select.querySelector('option[value="30"]'),
-      )?.value,
-    ).toBe('30')
-    expect(
-      button('Ocultar conceptos de Comercio del barrio').getAttribute(
-        'aria-expanded',
-      ),
-    ).toBe('true')
-  })
+      )
+
+      if (!pageSize) {
+        throw new Error('Missing page size')
+      }
+
+      pageSize.value = '30'
+      pageSize.dispatchEvent(new Event('change', { bubbles: true }))
+
+      await nextTick()
+
+      button('Siguiente').click()
+
+      await nextTick()
+
+      const expand = document.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Mostrar conceptos de Comercio"]',
+      )
+      const expandLabel = expand?.getAttribute('aria-label')
+
+      if (!expand || !expandLabel) {
+        throw new Error('Missing concept toggle')
+      }
+
+      expand.click()
+
+      await nextTick()
+
+      expect(document.querySelector('main')?.textContent).toContain(
+        'Página 2 de 2',
+      )
+
+      await runtime.router.push(destination)
+      await flushPromises()
+      await runtime.router.push('/invoices')
+      await flushPromises()
+
+      expect(
+        document.querySelector<HTMLInputElement>(
+          'input[placeholder="Emisor o número"]',
+        )?.value,
+      ).toBe('Comercio')
+      expect(
+        [...document.querySelectorAll('select')].find((select) =>
+          select.querySelector('option[value="30"]'),
+        )?.value,
+      ).toBe('30')
+      expect(
+        [...document.querySelectorAll('label')]
+          .find((element) => element.firstChild?.textContent?.trim() === 'Año')
+          ?.querySelector('select')?.value,
+      ).toBe('2026')
+      expect(
+        [...document.querySelectorAll('label')]
+          .find(
+            (element) =>
+              element.firstChild?.textContent?.trim() === 'Categoría',
+          )
+          ?.querySelector('select')?.value,
+      ).toBe('Alimentación')
+      expect(document.querySelector('main')?.textContent).toContain(
+        'Página 2 de 2',
+      )
+      expect(
+        button(expandLabel.replace('Mostrar', 'Ocultar')).getAttribute(
+          'aria-expanded',
+        ),
+      ).toBe('true')
+    },
+  )
 
   it('keeps unavailable invoice data distinct from an empty collection and disables its header action', async () => {
     const runtime = await startApplication({
