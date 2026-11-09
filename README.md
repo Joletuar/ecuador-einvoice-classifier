@@ -33,7 +33,7 @@ El clasificador utiliza las descripciones de los productos o servicios y combina
 
 Para ejecutar la aplicación se requiere Bun, una versión moderna de Chrome o Edge y el paquete completo del clasificador en `ml/outputs/models/export/`, que debe contener `manifest.json`, `concept_pipeline.onnx` y el directorio `runtime/`.
 
-Si el paquete todavía no está disponible, consulta la [guía de notebooks](ml/notebooks/README.md) para generarlo, ya que la aplicación requiere tanto el modelo ONNX como su motor WebAssembly compatible.
+Si el paquete todavía no está disponible, consulta la [guía de notebooks](./ml/notebooks/README.md) para generarlo, ya que la aplicación requiere tanto el modelo ONNX como su motor WebAssembly compatible.
 
 Desde la raíz del proyecto, ejecuta:
 
@@ -58,7 +58,7 @@ El desarrollo del clasificador se organiza en cinco notebooks que permiten compl
 4. **Entrenamiento y evaluación:** ajustar el clasificador y analizar su rendimiento.
 5. **Exportación:** convertir el modelo a ONNX y preparar el motor compatible con el navegador.
 
-Antes de ejecutar estos procedimientos, consulta la [guía de notebooks](ml/notebooks/README.md), donde se describen sus dependencias, entradas y salidas.
+Antes de ejecutar estos procedimientos, consulta la [guía de notebooks](ml/README.md), donde se describen sus dependencias, entradas y salidas.
 
 ## Almacenamiento local y funcionamiento sin conexión
 
