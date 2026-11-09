@@ -86,7 +86,7 @@ const { project, author, survey, tutorials } = informationContent
           Comparte tu opinión
         </h2>
         <p class="flex-1 text-sm leading-6 text-ink-muted">
-          Comparte tu experiencia utilizando la applicación y ayúdanos a
+          Comparte tu experiencia utilizando la aplicación y ayúdanos a
           mejorarla completando la encuesta.
         </p>
         <Button
