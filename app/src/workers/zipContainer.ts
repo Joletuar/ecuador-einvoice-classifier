@@ -12,6 +12,12 @@ const centralSignature = 0x02014b50
 const zip64LocatorSignature = 0x07064b50
 const zip64EndSignature = 0x06064b50
 
+export interface ZipEntryIntegrity {
+  readonly offset: number
+  readonly crc: number
+  readonly expandedBytes: number
+}
+
 function invalid(): never {
   throw failure(
     WorkerErrorCode.InvalidZip,
@@ -38,6 +44,7 @@ async function inspectZipContainer(
   observedEntries: number | undefined,
   limits: ProcessingLimits,
   control: WorkControl,
+  metadataOnly = false,
 ) {
   const tailOffset = Math.max(0, file.size - 65_557)
 
@@ -163,7 +170,7 @@ async function inspectZipContainer(
     }
 
     if (count === 0 && size === 0) {
-      return 0
+      return { xmlCount: 0, entries: [] }
     }
 
     if (offset >= directoryEnd) {
@@ -179,6 +186,7 @@ async function inspectZipContainer(
     }
 
     let xmlCount = 0
+    const entries: ZipEntryIntegrity[] = []
     const localRecords: { offset: number; end: number }[] = []
 
     for (let index = 0; index < count; index++) {
@@ -200,6 +208,9 @@ async function inspectZipContainer(
       const extraBytes = header.getUint16(30, true)
       const commentBytes = header.getUint16(32, true)
       const localOffset = header.getUint32(42, true)
+      let resolvedOffset = localOffset
+      let compressed = header.getUint32(20, true)
+      let uncompressed = header.getUint32(24, true)
       const disk = header.getUint16(34, true)
       const next = position + 46 + nameBytes + extraBytes + commentBytes
 
@@ -227,7 +238,11 @@ async function inspectZipContainer(
       // ZIP64 solo añade un valor de 64 bits cuando el campo original contiene
       // su valor máximo. Eso determina qué valores hay que saltar para leer la
       // posición del archivo.
-      if (localOffset === 0xffffffff || disk === 0xffff) {
+      if (
+        localOffset === 0xffffffff ||
+        disk === 0xffff ||
+        (metadataOnly && [compressed, uncompressed].includes(0xffffffff))
+      ) {
         const extra = await read(position + 46 + nameBytes, extraBytes)
 
         let found = false
@@ -244,10 +259,28 @@ async function inspectZipContainer(
             let valueOffset = cursor + 4
 
             if (header.getUint32(24, true) === 0xffffffff) {
+              if (metadataOnly) {
+                if (valueOffset + 8 > end) {
+                  invalid()
+                }
+
+                uncompressed = safeInteger(
+                  extra.getBigUint64(valueOffset, true),
+                )
+              }
+
               valueOffset += 8
             }
 
             if (header.getUint32(20, true) === 0xffffffff) {
+              if (metadataOnly) {
+                if (valueOffset + 8 > end) {
+                  invalid()
+                }
+
+                compressed = safeInteger(extra.getBigUint64(valueOffset, true))
+              }
+
               valueOffset += 8
             }
 
@@ -258,6 +291,10 @@ async function inspectZipContainer(
               ) {
                 invalid()
               }
+
+              resolvedOffset = safeInteger(
+                extra.getBigUint64(valueOffset, true),
+              )
 
               valueOffset += 8
             }
@@ -286,14 +323,15 @@ async function inspectZipContainer(
         // El total solo se usa si coincide con los archivos que puede leer el
         // importador. Si hay dudas, se deja el progreso sin total y se intenta
         // recuperar las facturas.
-        const compressed = header.getUint32(20, true)
-        const uncompressed = header.getUint32(24, true)
-
-        if ([localOffset, compressed, uncompressed].includes(0xffffffff)) {
+        if (
+          !metadataOnly &&
+          [localOffset, compressed, uncompressed].includes(0xffffffff)
+        ) {
           invalid()
         }
 
-        const local = await read(localOffset, 30, true)
+        const physicalOffset = metadataOnly ? resolvedOffset : localOffset
+        const local = await read(physicalOffset, 30, true)
 
         const flags = header.getUint16(8, true)
 
@@ -307,7 +345,7 @@ async function inspectZipContainer(
         }
 
         const centralName = await read(position + 46, nameBytes)
-        const localName = await read(localOffset + 30, nameBytes, true)
+        const localName = await read(physicalOffset + 30, nameBytes, true)
 
         for (let byte = 0; byte < nameBytes; byte++) {
           if (centralName.getUint8(byte) !== localName.getUint8(byte)) {
@@ -316,9 +354,13 @@ async function inspectZipContainer(
         }
 
         let end =
-          localOffset + 30 + nameBytes + local.getUint16(28, true) + compressed
+          physicalOffset +
+          30 +
+          nameBytes +
+          local.getUint16(28, true) +
+          compressed
 
-        if (flags & 8) {
+        if (!metadataOnly && flags & 8) {
           const signed =
             (await read(end, 4, true)).getUint32(0, true) === 0x08074b50
           const descriptor = await read(end + (signed ? 4 : 0), 12, true)
@@ -333,9 +375,10 @@ async function inspectZipContainer(
 
           end += signed ? 16 : 12
         } else if (
-          local.getUint32(14, true) !== header.getUint32(16, true) ||
-          local.getUint32(18, true) !== compressed ||
-          local.getUint32(22, true) !== uncompressed
+          !metadataOnly &&
+          (local.getUint32(14, true) !== header.getUint32(16, true) ||
+            local.getUint32(18, true) !== compressed ||
+            local.getUint32(22, true) !== uncompressed)
         ) {
           invalid()
         }
@@ -344,7 +387,15 @@ async function inspectZipContainer(
           invalid()
         }
 
-        localRecords.push({ offset: localOffset, end })
+        localRecords.push({ offset: physicalOffset, end })
+
+        if (metadataOnly) {
+          entries.push({
+            offset: physicalOffset,
+            crc: header.getUint32(16, true),
+            expandedBytes: uncompressed,
+          })
+        }
       }
 
       position = next
@@ -375,19 +426,25 @@ async function inspectZipContainer(
       let expected = 0
 
       for (const local of localRecords) {
-        if (local.offset !== expected) {
+        if (
+          metadataOnly
+            ? local.offset < expected || (expected === 0 && local.offset !== 0)
+            : local.offset !== expected
+        ) {
           invalid()
         }
 
         expected = local.end
       }
 
-      if (expected !== offset) {
+      if (!metadataOnly && expected !== offset) {
         invalid()
       }
     }
 
-    return xmlCount
+    entries.sort((left, right) => left.offset - right.offset)
+
+    return { xmlCount, entries }
   }
 
   for (let index = tail.byteLength - 22; index >= 0; index--) {
@@ -437,7 +494,29 @@ export async function countZipXml(
   }
 
   try {
-    return await inspectZipContainer(file, undefined, limits, control)
+    return (await inspectZipContainer(file, undefined, limits, control))
+      .xmlCount
+  } catch (error) {
+    if (error instanceof ProcessingCancelled) {
+      throw error
+    }
+
+    return null
+  }
+}
+
+export async function readZipIntegrity(
+  file: Blob,
+  limits: ProcessingLimits,
+  control: WorkControl,
+): Promise<readonly ZipEntryIntegrity[] | null> {
+  if (file.size > limits.maxInputBytes) {
+    return null
+  }
+
+  try {
+    return (await inspectZipContainer(file, undefined, limits, control, true))
+      .entries
   } catch (error) {
     if (error instanceof ProcessingCancelled) {
       throw error
