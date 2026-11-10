@@ -98,7 +98,12 @@ export function reconcileSelection(
     const result = results.get(entry.id)
 
     if (notStartedIds.has(entry.id) || result?.retryable) {
-      return [{ id: entry.id, file: entry.file, failure: result?.message }]
+      const failure =
+        result?.status === FileResultStatus.Error || result?.issues?.length
+          ? result?.message
+          : undefined
+
+      return [{ id: entry.id, file: entry.file, failure }]
     }
 
     if (

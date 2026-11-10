@@ -226,7 +226,7 @@ export function useUploadProcessing(
         value.kind === ProcessingOutcomeKind.Failed
           ? value.message
           : value.kind === ProcessingOutcomeKind.Cancelled
-            ? 'Procesamiento cancelado. Tus facturas guardadas siguen disponibles. Puedes procesar los archivos pendientes.'
+            ? 'Procesamiento cancelado, las facturas procesadas se guardaron correctamente.'
             : undefined
       activity.value = {
         ...activity.value,

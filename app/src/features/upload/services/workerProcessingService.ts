@@ -52,6 +52,7 @@ interface FileContext {
   file: File
   source: ImportRecord
   settled: Map<number, SettledSourceEntry>
+  permanentIssues: Set<string>
   attempted: boolean
   pending: boolean
 }
@@ -172,6 +173,7 @@ export function createWorkerProcessingService(options: {
               createdAt: new Date().toISOString(),
             },
             settled: new Map<number, SettledSourceEntry>(),
+            permanentIssues: new Set<string>(),
             attempted: false,
             pending: true,
           }
@@ -181,7 +183,7 @@ export function createWorkerProcessingService(options: {
       results.set(input.id, {
         saved: new Map(),
         duplicates: new Map(),
-        issues: new Set(),
+        issues: new Set(context.permanentIssues),
         emitted: new Map(),
         initialSettled: context.settled.size,
         totalXml:
@@ -238,7 +240,11 @@ export function createWorkerProcessingService(options: {
       })
     }
 
-    function finishSource(id: string, pending: boolean) {
+    function finishSource(
+      id: string,
+      pending: boolean,
+      storedInvoiceIds: ReadonlySet<string>,
+    ) {
       const context = active.get(id)!
       const result = results.get(id)!
 
@@ -246,14 +252,26 @@ export function createWorkerProcessingService(options: {
 
       const saved = [...result.saved.values()]
       const issues = [...result.issues]
+      const alreadySaved = new Set(result.duplicates.values())
+
+      for (const entry of context.settled.values()) {
+        if (
+          entry.status !== SourceEntryStatus.PermanentFailure &&
+          storedInvoiceIds.has(entry.invoiceId) &&
+          !result.saved.has(entry.invoiceId)
+        ) {
+          alreadySaved.add(entry.invoiceId)
+        }
+      }
+
       const savedLabel =
         saved.length === 1 ? 'factura guardada' : 'facturas guardadas'
       const message = [
         saved.length
           ? `${saved.length} ${savedLabel}.`
           : 'No se guardaron facturas nuevas.',
-        result.duplicates.size
-          ? `${result.duplicates.size} ${result.duplicates.size === 1 ? 'factura ya guardada, identificada' : 'facturas ya guardadas, identificadas'} por su clave de acceso.`
+        alreadySaved.size
+          ? `${alreadySaved.size} ${alreadySaved.size === 1 ? 'factura ya estaba guardada.' : 'facturas ya estaban guardadas.'}`
           : '',
         ...issues,
         pending
@@ -271,12 +289,14 @@ export function createWorkerProcessingService(options: {
         retryable: pending,
         ...(saved.length
           ? { status: FileResultStatus.Added, invoices: saved }
-          : result.duplicates.size && !issues.length
+          : alreadySaved.size && !issues.length
             ? {
                 status: FileResultStatus.Duplicate,
-                invoiceIds: [...new Set(result.duplicates.values())],
+                invoiceIds: [...alreadySaved],
               }
-            : { status: FileResultStatus.Error }),
+            : pending && !issues.length
+              ? { status: FileResultStatus.Pending, retryable: true }
+              : { status: FileResultStatus.Error }),
       }
 
       files.set(id, file)
@@ -388,9 +408,13 @@ export function createWorkerProcessingService(options: {
                   : null
 
               if (!event.result.ok) {
-                result.issues.add(
-                  `${event.entry.entryPath ?? context.file.name}: ${event.result.error.code}: ${event.result.error.message}`,
-                )
+                const issue = `${event.entry.entryPath ?? context.file.name}: ${event.result.error.code}: ${event.result.error.message}`
+
+                result.issues.add(issue)
+
+                if (!event.result.error.retryable) {
+                  context.permanentIssues.add(issue)
+                }
               }
 
               if (!invoice) {
@@ -521,6 +545,8 @@ export function createWorkerProcessingService(options: {
     const interrupted =
       sources[firstNotStarted < 0 ? sources.length - 1 : firstNotStarted - 1]
         ?.selectionId
+    const data = session.snapshot()
+    const storedInvoiceIds = new Set(data.invoices.map((invoice) => invoice.id))
 
     for (const [id, context] of active) {
       const result = results.get(id)!
@@ -540,13 +566,26 @@ export function createWorkerProcessingService(options: {
       }
 
       const notStarted = notStartedSet.has(id)
-      const pending = Boolean(
-        failure ||
-        result.error?.retryable ||
-        notStarted ||
-        (terminal?.type !== WorkerMessageType.Completed &&
-          (!result.counts || (id === interrupted && !result.error))),
-      )
+      const settledXml =
+        context.source.kind === SourceKind.Xml
+          ? context.settled.get(0)
+          : undefined
+
+      const confirmedXml =
+        terminal?.type === WorkerMessageType.Cancelled &&
+        settledXml !== undefined &&
+        settledXml.status !== SourceEntryStatus.PermanentFailure &&
+        storedInvoiceIds.has(settledXml.invoiceId)
+
+      const pending =
+        !confirmedXml &&
+        Boolean(
+          failure ||
+          result.error?.retryable ||
+          notStarted ||
+          (terminal?.type !== WorkerMessageType.Completed &&
+            (!result.counts || (id === interrupted && !result.error))),
+        )
 
       if (terminal?.type === WorkerMessageType.Failed && pending) {
         result.issues.add(terminal.error.message)
@@ -557,10 +596,10 @@ export function createWorkerProcessingService(options: {
       }
 
       publishProgress(id, WorkerStage.AwaitingCommit)
-      finishSource(id, pending)
+      finishSource(id, pending, storedInvoiceIds)
     }
 
-    hooks.onData?.(session.snapshot())
+    hooks.onData?.(data)
 
     const confirmed = inputs.flatMap((input) => files.get(input.id) ?? [])
     const notStartedIds = [...(terminal?.notStartedSelectionIds ?? [])]

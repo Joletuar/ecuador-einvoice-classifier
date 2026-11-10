@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { AlertCircle, Clock3, FileArchive, FileText, X } from 'lucide-vue-next'
-import { pendingFileMessage } from '../presentation/processingMessages'
 import AnimatedScrollList from '../../../shared/ui/AnimatedScrollList.vue'
 import Button from '../../../shared/ui/button/Button.vue'
 import { formatBytes, type SelectedFile } from '../model/selection'
@@ -71,12 +70,6 @@ const open = defineModel<boolean>('open', { default: false })
             Resultado sin confirmar. Revisa su estado antes de volver a
             procesarlo.
           </p>
-          <p
-            v-else-if="entry.failure"
-            class="mt-1 break-words text-sm text-danger"
-          >
-            {{ pendingFileMessage }}
-          </p>
         </div>
         <span
           class="hidden text-right text-sm tabular-nums text-ink-muted sm:col-start-3 sm:row-start-1 sm:block"
@@ -92,23 +85,17 @@ const open = defineModel<boolean>('open', { default: false })
           <span
             class="inline-flex items-center justify-self-start gap-1.5 rounded-md px-2 py-1 text-xs font-medium sm:col-start-4 sm:row-start-1"
             :class="
-              entry.unresolved || entry.failure
+              entry.unresolved
                 ? 'bg-danger/5 text-danger'
                 : 'bg-canvas text-ink-muted'
             "
           >
             <component
-              :is="entry.unresolved || entry.failure ? AlertCircle : Clock3"
+              :is="entry.unresolved ? AlertCircle : Clock3"
               :size="12"
               aria-hidden="true"
             />
-            {{
-              entry.unresolved
-                ? 'Sin confirmar'
-                : entry.failure
-                  ? 'Con error'
-                  : 'Pendiente'
-            }}
+            {{ entry.unresolved ? 'Sin confirmar' : 'Pendiente' }}
           </span>
         </div>
         <Button

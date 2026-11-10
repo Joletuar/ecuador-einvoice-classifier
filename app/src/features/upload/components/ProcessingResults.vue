@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { AlertCircle, CheckCircle, Copy, File } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { AlertCircle, CheckCircle, Clock3, Copy, File } from 'lucide-vue-next'
 
 import { fileResultMessage } from '../presentation/processingMessages'
 import { FileResultStatus } from '../model/processingStatus'
@@ -19,6 +20,9 @@ const {
   summary?: ProcessingSummary | null
 }>()
 const open = defineModel<boolean>('open', { default: false })
+const visibleResults = computed(() =>
+  results.filter((result) => result.status !== FileResultStatus.Pending),
+)
 
 const visual = {
   [FileResultStatus.Added]: {
@@ -42,6 +46,13 @@ const visual = {
     iconClasses: 'text-danger',
     icon: AlertCircle,
   },
+  [FileResultStatus.Pending]: {
+    label: 'Pendiente',
+    classes: 'border-line bg-canvas text-ink-muted',
+    rowClasses: 'border-l-line bg-canvas',
+    iconClasses: 'text-ink-muted',
+    icon: Clock3,
+  },
 }
 </script>
 
@@ -50,7 +61,7 @@ const visual = {
     v-model:open="open"
     label="Resultados por archivo"
     :mobile-row-height="67"
-    :keys="results.map((result) => `${attemptId}:${result.id}`)"
+    :keys="visibleResults.map((result) => `${attemptId}:${result.id}`)"
   >
     <template #header-detail>
       <dl
@@ -78,7 +89,7 @@ const visual = {
       </dl>
     </template>
     <template
-      v-if="results.length"
+      v-if="visibleResults.length"
       #columns
     >
       <div
@@ -90,7 +101,7 @@ const visual = {
       </div>
     </template>
     <p
-      v-if="!results.length"
+      v-if="!visibleResults.length"
       class="px-4 py-3 text-sm leading-5 text-ink-muted"
     >
       No hay resultados todavía.
@@ -100,7 +111,7 @@ const visual = {
       class="divide-y divide-line"
     >
       <li
-        v-for="result in results"
+        v-for="result in visibleResults"
         :key="`${attemptId}:${result.id}`"
         :data-row-key="`${attemptId}:${result.id}`"
         class="grid min-h-[var(--file-list-row-height)] grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 border-l-2 px-4 py-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_8.5rem]"
@@ -123,7 +134,6 @@ const visual = {
           <p
             v-if="
               result.status === FileResultStatus.Error ||
-              result.retryable ||
               result.issues?.length ||
               result.counts?.failedXml ||
               result.counts?.omittedEntries
@@ -143,12 +153,9 @@ const visual = {
             aria-hidden="true"
           />
           {{
-            result.retryable
-              ? 'Pendiente'
-              : result.issues?.length &&
-                  result.status === FileResultStatus.Added
-                ? 'Con incidencias'
-                : visual[result.status].label
+            result.issues?.length && result.status === FileResultStatus.Added
+              ? 'Con incidencias'
+              : visual[result.status].label
           }}
         </span>
       </li>

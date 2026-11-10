@@ -11,16 +11,14 @@ export const pendingFileMessage =
   'El procesamiento quedó pendiente y puedes volver a intentarlo.'
 
 export function fileResultMessage(result: FileProcessingResult): string {
-  if (result.retryable) {
+  if (result.status === FileResultStatus.Pending) {
     return pendingFileMessage
   }
 
   if (result.status === FileResultStatus.Error) {
-    return 'Hubo un problema al procesar este archivo.'
-  }
-
-  if (result.status === FileResultStatus.Duplicate) {
-    return 'Las facturas de este archivo ya estaban guardadas.'
+    return result.retryable
+      ? 'No se pudo procesar este archivo. Puedes volver a intentarlo.'
+      : 'Hubo un problema al procesar este archivo.'
   }
 
   if (
@@ -29,6 +27,14 @@ export function fileResultMessage(result: FileProcessingResult): string {
     result.counts?.omittedEntries
   ) {
     return 'Se guardaron facturas, pero hubo inconvenientes durante el procesamiento.'
+  }
+
+  if (result.retryable) {
+    return pendingFileMessage
+  }
+
+  if (result.status === FileResultStatus.Duplicate) {
+    return 'Las facturas de este archivo ya estaban guardadas.'
   }
 
   return result.invoices.length === 1

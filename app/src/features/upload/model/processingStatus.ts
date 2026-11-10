@@ -1,6 +1,7 @@
 export const FileResultStatus = {
   Added: 'added',
   Duplicate: 'duplicate',
+  Pending: 'pending',
   Error: 'error',
 } as const
 
