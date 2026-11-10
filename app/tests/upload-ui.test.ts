@@ -456,7 +456,7 @@ describe('real upload presentation', () => {
     expect(result.text()).not.toContain('INVALID_ZIP')
     expect(result.text()).not.toContain('archivo truncado.')
     expect(result.text()).toContain(
-      'Se guardaron facturas, pero hubo inconvenientes durante el procesamiento.',
+      'Se guardaron algunas facturas, pero el ZIP está dañado, incompleto o tiene un formato no válido.',
     )
     expect(result.text()).not.toContain('1 factura guardada.')
     expect(result.text()).not.toContain('Ya existe un archivo con este nombre.')
@@ -857,7 +857,7 @@ describe('selected-file heading count', () => {
       expect(selected.text()).toContain('new.xml')
       expect(results.text()).not.toContain(failure.message)
       expect(results.text()).toContain(
-        'Hubo un problema al procesar este archivo.',
+        'No se pudo procesar este archivo por un problema inesperado.',
       )
     } finally {
       selected.unmount()
@@ -872,7 +872,7 @@ describe('plain language file outcomes', () => {
     const technical = Array.from(
       { length: 25 },
       (_, index) =>
-        `nested/${index}.xml: INVALID_XML: claveAcceso ${'1'.repeat(49)}`,
+        `nested/${index}.xml: INVALID_XML: La factura no contiene una clave de acceso de 49 dígitos válida. ${'1'.repeat(49)}`,
     ).join(' ')
     const wrapper = mount(ProcessingResults, {
       props: {
@@ -913,13 +913,13 @@ describe('plain language file outcomes', () => {
 
     expect(rows).toHaveLength(3)
     expect(rows[0]!.text()).toContain(
-      'Hubo un problema al procesar este archivo.',
+      'El ZIP contiene facturas con datos obligatorios incompletos o inválidos.',
     )
     expect(rows[1]!.text()).toContain(
-      'Se guardaron facturas, pero hubo inconvenientes durante el procesamiento.',
+      'Se guardaron algunas facturas, pero hay facturas con datos obligatorios incompletos o inválidos.',
     )
     expect(rows[2]!.text()).toContain(
-      'El procesamiento quedó pendiente y puedes volver a intentarlo.',
+      'El ZIP contiene facturas con datos obligatorios incompletos o inválidos.',
     )
 
     for (const row of rows) {
@@ -930,7 +930,7 @@ describe('plain language file outcomes', () => {
     expect(wrapper.text()).not.toContain('nested/')
     expect(wrapper.text()).not.toContain('1'.repeat(49))
     expect(rows[0]!.text()).not.toContain('volver a intentarlo')
-    expect(rows[2]!.text()).toContain('Pendiente')
+    expect(rows[2]!.text()).toContain('Error')
   })
 
   it('keeps technical details out of retained selections and failed processing activity', () => {
@@ -961,9 +961,8 @@ describe('plain language file outcomes', () => {
     })
 
     wrappers.push(selection, activity)
-    expect(selection.text()).toContain(
-      'El procesamiento quedó pendiente y puedes volver a intentarlo.',
-    )
+    expect(selection.text()).toContain('Pendiente')
+    expect(selection.text()).not.toContain('volver a intentarlo')
     expect(activity.text()).toContain(
       'Hubo un problema al procesar los archivos.',
     )
