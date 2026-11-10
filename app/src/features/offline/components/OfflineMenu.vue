@@ -79,11 +79,13 @@ const dotClasses = {
   [FeedbackTone.Danger]: 'bg-danger',
 }
 const itemClasses = {
+  [FeedbackTone.Neutral]: 'text-ink-muted',
   [FeedbackTone.Success]: 'text-success',
   [FeedbackTone.Warning]: 'text-warning',
   [FeedbackTone.Danger]: 'text-danger',
 }
 const itemIcons = {
+  [FeedbackTone.Neutral]: Loader2,
   [FeedbackTone.Success]: CheckCircle2,
   [FeedbackTone.Warning]: AlertTriangle,
   [FeedbackTone.Danger]: XCircle,
@@ -102,14 +104,28 @@ const labels = {
     <PopoverTrigger as-child>
       <button
         type="button"
-        class="relative inline-flex shrink-0 items-center gap-1 overflow-visible rounded-full border border-line bg-surface px-2 py-1 text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:gap-1.5 sm:px-3"
+        class="relative inline-flex size-11 shrink-0 items-center justify-center overflow-visible rounded-full border border-line bg-surface text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:size-auto sm:gap-1.5 sm:px-3 sm:py-1"
       >
+        <component
+          :is="itemIcons[view.tone]"
+          class="size-4.5 shrink-0 sm:hidden"
+          :class="[
+            itemClasses[view.tone],
+            {
+              'animate-spin motion-reduce:animate-none':
+                view.tone === FeedbackTone.Neutral,
+            },
+          ]"
+          aria-hidden="true"
+        />
         <span
-          class="h-2 w-2 rounded-full"
+          class="hidden h-2 w-2 rounded-full sm:block"
           :class="dotClasses[view.tone]"
           aria-hidden="true"
         />
-        <span>{{ labels[view.tone] }}</span>
+        <span class="sr-only sm:not-sr-only sm:whitespace-nowrap">
+          {{ labels[view.tone] }}
+        </span>
         <template v-if="view.updateAvailable">
           <span
             aria-hidden="true"
@@ -119,6 +135,7 @@ const labels = {
         </template>
         <ChevronDown
           :size="14"
+          class="hidden sm:block"
           aria-hidden="true"
         />
       </button>

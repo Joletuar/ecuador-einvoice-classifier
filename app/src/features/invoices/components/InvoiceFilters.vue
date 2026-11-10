@@ -24,11 +24,13 @@ const hasFilters = computed(() =>
 </script>
 
 <template>
-  <div class="flex flex-wrap items-end gap-4">
-    <label class="grid flex-[1_1_280px] gap-1 text-ink-muted">
+  <div class="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap sm:gap-4">
+    <label
+      class="col-span-2 grid min-w-0 gap-1 text-ink-muted sm:flex-[1_1_280px]"
+    >
       Buscar
       <input
-        class="h-10 w-full rounded-md border border-line bg-white px-3 text-ink outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-55"
+        class="h-11 w-full rounded-md border border-line bg-white px-3 text-ink outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-55 sm:h-10"
         :value="filters.query"
         :disabled="disabled"
         placeholder="Emisor o número"
@@ -37,10 +39,10 @@ const hasFilters = computed(() =>
         "
       />
     </label>
-    <label class="grid gap-1 text-ink-muted">
+    <label class="grid min-w-0 gap-1 text-ink-muted">
       Año
       <NativeSelect
-        class="h-10"
+        class="h-11 min-w-0 truncate sm:h-10"
         :value="filters.year"
         :disabled="disabled"
         @change="
@@ -57,10 +59,10 @@ const hasFilters = computed(() =>
         </option>
       </NativeSelect>
     </label>
-    <label class="grid gap-1 text-ink-muted">
+    <label class="grid min-w-0 gap-1 text-ink-muted">
       Categoría
       <NativeSelect
-        class="h-10"
+        class="h-11 min-w-0 truncate sm:h-10"
         :value="filters.category"
         :disabled="disabled"
         @change="
@@ -79,7 +81,7 @@ const hasFilters = computed(() =>
     </label>
     <Button
       variant="outline"
-      class="h-10"
+      class="col-span-2 h-11 w-full sm:h-10 sm:w-auto"
       :disabled="disabled || !hasFilters"
       @click="emit('clear')"
     >

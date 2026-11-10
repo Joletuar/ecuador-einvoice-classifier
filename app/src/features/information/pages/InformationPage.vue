@@ -62,6 +62,7 @@ const { project, author, survey, tutorials } = informationContent
           target="_blank"
           rel="noopener noreferrer"
           variant="outline"
+          class="h-11 w-full sm:h-9 sm:w-auto"
         >
           Ver LinkedIn
         </Button>
@@ -69,6 +70,7 @@ const { project, author, survey, tutorials } = informationContent
           v-else
           type="button"
           variant="outline"
+          class="h-11 w-full sm:h-9 sm:w-auto"
           disabled
         >
           Ver LinkedIn
@@ -95,12 +97,14 @@ const { project, author, survey, tutorials } = informationContent
           :href="survey.url"
           target="_blank"
           rel="noopener noreferrer"
+          class="h-11 w-full sm:h-9 sm:w-auto"
         >
           Responder encuesta
         </Button>
         <Button
           v-else
           type="button"
+          class="h-11 w-full sm:h-9 sm:w-auto"
           disabled
         >
           Responder encuesta

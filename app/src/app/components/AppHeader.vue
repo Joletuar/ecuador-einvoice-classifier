@@ -9,18 +9,18 @@ withDefaults(defineProps<{ invoicesAvailable?: boolean }>(), {
 })
 
 const navigationClass =
-  'px-3 py-2 text-sm font-semibold text-ink-muted transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none'
+  'flex min-h-11 min-w-0 items-center justify-center px-2 py-2 text-sm font-semibold text-ink-muted transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:min-h-0 sm:px-3 motion-reduce:transition-none'
 </script>
 
 <template>
   <header class="border-b border-line bg-surface">
     <div
-      class="mx-auto flex w-full max-w-292 flex-wrap items-center gap-x-5 gap-y-3 px-6 py-4"
+      class="mx-auto flex w-full max-w-292 flex-wrap items-center gap-x-2 gap-y-2 px-6 py-3 sm:gap-x-5 sm:gap-y-3 sm:py-4"
     >
       <RouterLink
         :to="{ name: RouteName.Upload }"
         aria-label="Mis facturas, inicio"
-        class="mr-auto inline-flex items-center gap-2 text-base font-extrabold text-ink"
+        class="mr-auto inline-flex min-h-11 items-center gap-2 text-base font-extrabold text-ink sm:min-h-0"
       >
         <span
           class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white"
@@ -70,7 +70,7 @@ const navigationClass =
         </RouterLink>
       </nav>
       <div
-        class="ml-auto flex max-w-full items-center justify-end gap-1.5 sm:gap-2"
+        class="ml-auto flex shrink-0 items-center justify-end gap-1 sm:max-w-full sm:gap-2"
       >
         <slot name="storage" />
         <slot name="offline" />

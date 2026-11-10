@@ -17,12 +17,14 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="flex flex-wrap items-center justify-between gap-4 text-sm text-ink-muted"
+    class="grid grid-cols-2 items-center gap-x-2 gap-y-3 text-xs text-ink-muted sm:flex sm:flex-wrap sm:justify-between sm:gap-4 sm:text-sm"
   >
-    <label class="flex items-center gap-2">
+    <label
+      class="col-start-1 row-start-1 flex w-max items-center gap-1 sm:w-auto sm:gap-2"
+    >
       Mostrar
       <NativeSelect
-        class="inline-block h-10 w-[86px]"
+        class="inline-block h-11 w-[64px] pl-[8px] pr-[28px] sm:h-10 sm:w-[86px] sm:pl-3 sm:pr-9"
         :value="pageSize"
         :disabled="disabled"
         @change="
@@ -38,21 +40,23 @@ const emit = defineEmits<{
         </option>
       </NativeSelect>
     </label>
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="contents sm:flex sm:flex-wrap sm:items-center sm:gap-2">
       <Button
         variant="outline"
         size="sm"
-        class="h-10"
+        class="col-start-1 row-start-2 h-11 w-full sm:h-10 sm:w-auto"
         :disabled="disabled || pagination.page <= 1"
         @click="emit('page', pagination.page - 1)"
       >
         Anterior
       </Button>
-      <span>Página {{ pagination.page }} de {{ pagination.pages }}</span>
+      <span class="col-start-2 row-start-1 justify-self-end whitespace-nowrap">
+        Página {{ pagination.page }} de {{ pagination.pages }}
+      </span>
       <Button
         variant="outline"
         size="sm"
-        class="h-10"
+        class="col-start-2 row-start-2 h-11 w-full sm:h-10 sm:w-auto"
         :disabled="disabled || pagination.page >= pagination.pages"
         @click="emit('page', pagination.page + 1)"
       >

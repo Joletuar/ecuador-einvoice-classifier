@@ -103,15 +103,19 @@ watch(
     >
       <button
         type="button"
-        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface px-2 py-1 text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:gap-1.5 sm:px-3"
+        class="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-xs font-semibold whitespace-nowrap text-ink hover:bg-primary-soft sm:size-auto sm:gap-1.5 sm:px-3 sm:py-1"
       >
         <HardDrive
           :size="14"
+          class="size-4.5 sm:size-3.5"
           aria-hidden="true"
         />
-        Almacenamiento
+        <span class="sr-only sm:not-sr-only sm:whitespace-nowrap">
+          Almacenamiento
+        </span>
         <ChevronDown
           :size="14"
+          class="hidden sm:block"
           aria-hidden="true"
         />
       </button>
