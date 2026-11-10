@@ -75,7 +75,7 @@ function drop(event: DragEvent) {
     aria-label="Archivos XML o ZIP"
     :disabled="disabled"
     multiple
-    accept=".xml,.zip"
+    accept=".xml,.zip,application/xml,text/xml,application/zip"
     @change="select"
   />
 </template>
