@@ -258,7 +258,10 @@ function setFilter(key: keyof Filter, value: string) {
           Revisa tus gastos y ajusta sus categorías.
         </p>
       </div>
-      <Button @click="router.push({ name: RouteName.Upload })">
+      <Button
+        class="w-full sm:w-auto"
+        @click="router.push({ name: RouteName.Upload })"
+      >
         Cargar facturas
       </Button>
     </div>
