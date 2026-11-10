@@ -20,14 +20,14 @@ El clasificador utiliza las descripciones de los productos o servicios y combina
 
 ## Estructura del proyecto
 
-| Ruta                                      | Descripción                                                                                                  |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [`app/`](app/README.md)                   | Aplicación web desarrollada con Vue 3 y TypeScript para importar, clasificar, consultar y corregir facturas. |
-| [`ml/notebooks/`](ml/notebooks/README.md) | Notebooks de extracción, análisis exploratorio, preparación, entrenamiento y exportación del modelo.         |
-| `ml/data/`                                | Datos de entrada y tablas generadas durante la extracción y preparación.                                     |
-| `ml/outputs/models/`                      | Modelo entrenado y paquete ONNX para su ejecución en la aplicación.                                          |
-| `ml/outputs/reports/`                     | Informes de procesamiento y evaluación del clasificador.                                                     |
-| `ml/outputs/figures/`                     | Gráficos del análisis exploratorio y del entrenamiento.                                                      |
+| Ruta                            | Descripción                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`app/`](app/README.md)         | Aplicación web desarrollada con Vue 3 y TypeScript para importar, clasificar, consultar y corregir facturas. |
+| [`ml/notebooks/`](ml/README.md) | Notebooks de extracción, análisis exploratorio, preparación, entrenamiento y exportación del modelo.         |
+| `ml/data/`                      | Datos de entrada y tablas generadas durante la extracción y preparación.                                     |
+| `ml/outputs/models/`            | Modelo entrenado y paquete ONNX para su ejecución en la aplicación.                                          |
+| `ml/outputs/reports/`           | Informes de procesamiento y evaluación del clasificador.                                                     |
+| `ml/outputs/figures/`           | Gráficos del análisis exploratorio y del entrenamiento.                                                      |
 
 ## Ejecución de la aplicación
 
