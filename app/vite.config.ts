@@ -14,6 +14,7 @@ export default defineConfig(({ mode, isPreview }) => {
   const storageLimits = isPreview
     ? undefined
     : parseStorageLimits(loadEnv(mode, process.cwd(), 'VITE_'))
+
   const release = readOfflineRelease(undefined, { mode, storageLimits })
   const integrity = precacheIntegrity()
 
@@ -35,7 +36,31 @@ export default defineConfig(({ mode, isPreview }) => {
         filename: 'sw.ts',
         registerType: 'prompt',
         injectRegister: null,
-        manifest: false,
+        manifest: {
+          id: '/',
+          name: 'Mis facturas',
+          short_name: 'Mis facturas',
+          description:
+            'Organiza y clasifica tus facturas electrónicas ecuatorianas en tu dispositivo.',
+          lang: 'es-EC',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          theme_color: '#1456a0',
+          background_color: '#ffffff',
+          icons: [
+            {
+              src: 'pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+            },
+          ],
+        },
         injectManifest: {
           globPatterns: [
             '**/*.{js,css,html,svg,png,woff2}',

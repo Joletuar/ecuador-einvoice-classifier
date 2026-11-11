@@ -44,7 +44,7 @@ test -f .env || cp .env.example .env
 bun run dev
 ```
 
-Una vez iniciado el servidor de desarrollo, abre la dirección indicada por Vite y accede a **Cargar** para preparar el clasificador, seleccionar los archivos XML o ZIP e iniciar su procesamiento mediante **Procesar archivos**. Los resultados estarán disponibles en **Mis facturas**, donde podrás consultar los comprobantes y corregir sus categorías.
+Una vez iniciado el servidor de desarrollo, abre la dirección indicada por Vite y accede a **Cargar** para preparar el clasificador, seleccionar los archivos XML o ZIP e iniciar su procesamiento mediante **Procesar archivos**. Los resultados estarán disponibles en **Facturas**, donde podrás consultar los comprobantes y corregir sus categorías.
 
 La [documentación de la aplicación](app/README.md) incluye información adicional sobre configuración, límites de almacenamiento, pruebas y publicación.
 
