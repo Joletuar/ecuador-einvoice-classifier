@@ -19,6 +19,11 @@ export default defineConfig(({ mode, isPreview }) => {
   const integrity = precacheIntegrity()
 
   return {
+    build: {
+      rollupOptions: {
+        maxParallelFileOps: 64,
+      },
+    },
     define: isPreview
       ? {}
       : {

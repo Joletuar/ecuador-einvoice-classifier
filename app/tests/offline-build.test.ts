@@ -1,9 +1,10 @@
+import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { afterEach, expect, it, vi } from 'vitest'
-import { build } from 'vite'
 import { readClassifierPackage } from '../build/classifierAssets'
 import {
   inspectResources,
@@ -11,6 +12,7 @@ import {
 } from '../src/features/offline/services/offlineResources'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+const run = promisify(execFile)
 const directories: string[] = []
 
 afterEach(async () => {
@@ -20,7 +22,7 @@ afterEach(async () => {
   )
 })
 
-it('builds a complete verifiable precache including generated PWA assets', async () => {
+it('builds a complete verifiable precache with a limited file descriptor budget', async () => {
   vi.stubEnv('VITE_STORAGE_MAX_FILES', '5000')
   vi.stubEnv('VITE_STORAGE_MAX_BYTES', '1073741824')
 
@@ -28,13 +30,30 @@ it('builds a complete verifiable precache including generated PWA assets', async
 
   directories.push(directory)
 
-  await build({
-    root,
-    configFile: resolve(root, 'vite.config.ts'),
-    mode: 'production',
-    logLevel: 'silent',
-    build: { outDir: directory },
-  })
+  const arguments_ = [
+    resolve(root, 'node_modules/vite/bin/vite.js'),
+    'build',
+    '--outDir',
+    directory,
+    '--logLevel',
+    'error',
+  ]
+
+  if (process.platform === 'win32') {
+    await run(process.execPath, arguments_, { cwd: root })
+  } else {
+    await run(
+      'sh',
+      [
+        '-c',
+        'ulimit -n 256 && exec "$@"',
+        'offline-build',
+        process.execPath,
+        ...arguments_,
+      ],
+      { cwd: root },
+    )
+  }
 
   // Workbox injects this JSON after compiling the service worker.
   const source = await readFile(resolve(directory, 'sw.js'), 'utf8')
