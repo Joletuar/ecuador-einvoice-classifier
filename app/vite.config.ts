@@ -36,6 +36,9 @@ export default defineConfig(({ mode, isPreview }) => {
         filename: 'sw.ts',
         registerType: 'prompt',
         injectRegister: null,
+        integration: {
+          beforeBuildServiceWorker: integrity.beforeBuildServiceWorker,
+        },
         manifest: {
           id: '/',
           name: 'Mis facturas',

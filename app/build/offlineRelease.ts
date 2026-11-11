@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import type { Plugin } from 'vite'
+import type { ResolvedVitePWAOptions } from 'vite-plugin-pwa'
 import { readClassifierPackage } from './classifierAssets'
 
 const applicationRoot = fileURLToPath(new URL('../', import.meta.url))
@@ -95,6 +96,13 @@ export function precacheIntegrity() {
     },
   }
 
+  const withIntegrity = <Entry extends { url: string }>(entry: Entry) => ({
+    ...entry,
+    integrity: `sha256-${createHash('sha256')
+      .update(readFileSync(resolve(directory, entry.url)))
+      .digest('base64')}`,
+  })
+
   const transform = (
     entries: {
       url: string
@@ -102,14 +110,20 @@ export function precacheIntegrity() {
       size: number
     }[],
   ) => ({
-    manifest: entries.map((entry) => ({
-      ...entry,
-      integrity: `sha256-${createHash('sha256')
-        .update(readFileSync(resolve(directory, entry.url)))
-        .digest('base64')}`,
-    })),
+    manifest: entries.map(withIntegrity),
     warnings: [],
   })
 
-  return { plugin, transform }
+  const beforeBuildServiceWorker = (options: ResolvedVitePWAOptions) => {
+    // Workbox appends these after manifestTransforms, including the PWA icons
+    // and generated web manifest. Hash them once those files have been emitted.
+    options.injectManifest.additionalManifestEntries =
+      options.injectManifest.additionalManifestEntries?.map((entry) =>
+        withIntegrity(
+          typeof entry === 'string' ? { url: entry, revision: null } : entry,
+        ),
+      )
+  }
+
+  return { plugin, transform, beforeBuildServiceWorker }
 }
