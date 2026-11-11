@@ -6,8 +6,6 @@ Estos notebooks permiten preparar los datos de las facturas electrónicas, entre
 
 Se requiere Python 3.10 o posterior, Jupyter y el archivo `ml/data/invoices_dataset.zip`, que debe contener las facturas XML anonimizadas y el archivo `labeled_invoices.csv` con las categorías asignadas a sus conceptos.
 
-Los datos deben proporcionarse por separado, ya que no se descargan desde los notebooks y están excluidos del control de versiones.
-
 Desde la raíz del proyecto `ecuador-einvoice-classifier/`, ejecuta los siguientes comandos en una terminal compatible con Bash:
 
 ```sh
