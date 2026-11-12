@@ -18,7 +18,9 @@ defineProps<{
     >
       Resumen por categoría
     </h2>
-    <p class="text-xs text-ink-muted">Resumen por categoría tus facturas.</p>
+    <p class="text-xs text-ink-muted">
+      Breve detalle de los gastos por categoría.
+    </p>
     <ul
       class="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
     >
