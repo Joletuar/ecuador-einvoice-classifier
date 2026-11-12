@@ -14,3 +14,4 @@ __pycache__/
 .engram/*
 *.csv
 .codegraph/
+!ml/data/**
