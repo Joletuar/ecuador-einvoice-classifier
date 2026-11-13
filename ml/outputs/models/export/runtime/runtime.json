@@ -11,7 +11,7 @@
   "module": "ort-wasm-simd.mjs",
   "wasm": "ort-wasm-simd.wasm",
   "files": {
-    "ort-wasm-simd.wasm": "4d886400ef3f26c6ebeffd01efa9fba263c48d19fd5e7be11aa46c738dc8019e",
+    "ort-wasm-simd.wasm": "3a7db1bdc68fe7a74a8843686674b03243ce5b372dced1805a3ab26ec4a4b9d6",
     "ort-wasm-simd.mjs": "a4a0f2cb05b18335c1480781b1f6d24827b1e0bb71d4437de2f0e74fc0784cb1",
     "ort.wasm.min.mjs": "c21d9c326d453a4a61398270c804d5979e118540597cb0c07f7b3d64e6098234",
     "LICENSE.onnxruntime": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
