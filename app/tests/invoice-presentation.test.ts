@@ -67,13 +67,23 @@ describe('canonical invoice presentation', () => {
     const reasons = conceptExclusionReasons(invoice)
 
     expect([...reasons.keys()]).toEqual(['bad'])
-    expect(reasons.get('bad')).toBe('Importe ausente o inválido')
+    expect(reasons.get('bad')).toBe(
+      'Este concepto no se suma porque su importe no es un número válido.',
+    )
     expect(reasons.size).toBe(excludedTotalConcepts([invoice]))
   })
 
   it.each([
-    ['EUR', InvoiceIssueCode.UnknownCurrency, 'Moneda no reconocida'],
-    [null, InvoiceIssueCode.MissingCurrency, 'Sin moneda'],
+    [
+      'EUR',
+      InvoiceIssueCode.UnknownCurrency,
+      'Esta factura no se suma al resumen porque no se reconoce su moneda.',
+    ],
+    [
+      null,
+      InvoiceIssueCode.MissingCurrency,
+      'Esta factura no se suma al resumen porque no tiene moneda.',
+    ],
   ])(
     'inherits the actual %s currency exclusion for every affected concept',
     (raw, code, expected) => {

@@ -10,12 +10,13 @@ import {
 import { X } from 'lucide-vue-next'
 
 import {
+  InvoiceIssueCode,
   RuleReason,
   RuleStatus,
   SelectionMode,
 } from '../domain/classificationModel'
 import type { Invoice } from '../domain/invoiceModel'
-import { excludedTotalConcepts, totals } from '../domain/invoiceDomain'
+import { totals } from '../domain/invoiceDomain'
 import {
   exactMoney,
   formatDate,
@@ -46,6 +47,20 @@ const emit = defineEmits<{ close: [] }>()
 const editing = useCategoryEditing()
 
 const summary = computed(() => (invoice ? totals([invoice]) : {}))
+const issueMessages = computed(() => {
+  if (!invoice) {
+    return []
+  }
+
+  const messages = invoice.issues
+    .filter(
+      (issue) => issue.code !== InvoiceIssueCode.UnresolvedInvoiceCategory,
+    )
+    .map((issue) => issueLabel(issue, invoice))
+
+  return [...new Set(messages)]
+})
+
 const source = computed(() => {
   if (!invoice) {
     return 'No disponible'
@@ -281,30 +296,29 @@ function requestClose(event: Event) {
           </div>
           <section
             v-if="
-              invoice.issues.length ||
+              issueMessages.length ||
               invoice.automatic.status !== RuleStatus.Resolved
             "
             class="rounded-lg border border-warning/30 bg-warning-soft p-4 text-sm"
             aria-label="Incidencias de la factura"
           >
             <p v-if="invoice.automatic.status === RuleStatus.Provisional">
-              La categoría automática es provisional: algunos conceptos no
-              pudieron clasificarse.
+              La categoría principal se calculó con los conceptos que se
+              pudieron clasificar.
             </p>
             <p v-if="invoice.automatic.status === RuleStatus.Unassigned">
-              Categoría automática no asignada:
               {{
                 invoice.automatic.reason === RuleReason.UnavailableTieAmount
-                  ? 'falta un importe neto necesario para resolver el empate.'
-                  : 'ningún concepto tiene categoría disponible.'
+                  ? 'No se pudo elegir entre las categorías empatadas porque falta un importe válido.'
+                  : 'No se pudo elegir la categoría principal porque ningún concepto tiene categoría.'
               }}
             </p>
             <ul class="list-inside list-disc">
               <li
-                v-for="(issue, index) in invoice.issues"
-                :key="index"
+                v-for="message in issueMessages"
+                :key="message"
               >
-                {{ issueLabel(issue) }}
+                {{ message }}
               </li>
             </ul>
           </section>
@@ -320,14 +334,6 @@ function requestClose(event: Event) {
             <h2 class="text-lg font-semibold">Resumen por categoría</h2>
             <p class="text-xs text-ink-muted">
               Cuánto gastaste en cada categoría.
-            </p>
-            <p
-              v-if="excludedTotalConcepts([invoice])"
-              class="mt-2 text-sm text-warning"
-              role="status"
-            >
-              {{ excludedTotalConcepts([invoice]) }} conceptos excluidos de las
-              sumas USD por moneda o importe no disponible.
             </p>
             <div class="mt-5 grid gap-3">
               <div

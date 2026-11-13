@@ -76,83 +76,104 @@ export function conceptDescription(concept: Concept): string {
   return concept.name ?? 'No disponible'
 }
 
-const issueLabels: Record<InvoiceIssue['code'], string> = {
-  [InvoiceIssueCode.MissingField]: 'Dato ausente',
-  [InvoiceIssueCode.InvalidField]: 'Dato inválido',
-  [InvoiceIssueCode.InvalidAmount]: 'Importe ausente o inválido',
-  [InvoiceIssueCode.UnrepresentableCents]:
-    'El importe exacto no puede sumarse en centavos',
-  [InvoiceIssueCode.MissingCurrency]:
-    'Sin moneda. No se incluye en los totales en USD',
-  [InvoiceIssueCode.UnknownCurrency]:
-    'Moneda no reconocida. No se incluye en los totales en USD',
-  [InvoiceIssueCode.MissingDescription]: 'Descripción ausente',
-  [InvoiceIssueCode.InvalidUnicode]: 'Descripción con Unicode inválido',
-  [InvoiceIssueCode.UnresolvedInvoiceCategory]:
-    'No se pudo asignar la categoría principal',
+const missingFieldMessages: Record<string, string> = {
+  '/date': 'La factura no tiene fecha de emisión.',
+  '/issuer/legalName': 'Falta el nombre del emisor.',
+  '/number/establishment': 'El número de factura está incompleto.',
+  '/number/pointOfIssue': 'El número de factura está incompleto.',
+  '/number/sequential': 'El número de factura está incompleto.',
+  '/total': 'La factura no tiene importe total.',
 }
 
-export function issueLabel(issue: InvoiceIssue): string {
-  return `${issueLabels[issue.code]}: ${issue.field}${issue.conceptId ? ` (${issue.conceptId})` : ''}.`
+const missingCurrencyMessage =
+  'Esta factura no se suma al resumen porque no tiene moneda.'
+const unknownCurrencyMessage =
+  'Esta factura no se suma al resumen porque no se reconoce su moneda.'
+
+function amountLimitReason(amount: ExactAmount): string {
+  const fraction = amount.decimal?.split('.')[1] ?? ''
+
+  return /[1-9]/.test(fraction.slice(2))
+    ? 'tiene más de dos decimales'
+    : 'es demasiado grande'
+}
+
+export function issueLabel(issue: InvoiceIssue, invoice: Invoice): string {
+  const conceptIndex = invoice.concepts.findIndex(
+    (concept) => concept.id === issue.conceptId,
+  )
+  const concept = invoice.concepts[conceptIndex]
+  const conceptName =
+    conceptIndex >= 0 ? `concepto ${conceptIndex + 1}` : 'concepto'
+  const amountName = `El importe del ${conceptName}`
+
+  switch (issue.code) {
+    case InvoiceIssueCode.MissingField:
+      if (issue.conceptId !== null) {
+        return `El ${conceptName} no tiene importe.`
+      }
+
+      return missingFieldMessages[issue.field] ?? 'La factura está incompleta.'
+    case InvoiceIssueCode.InvalidField:
+      return 'La fecha de emisión no es válida.'
+    case InvoiceIssueCode.InvalidAmount:
+      return issue.field === '/total'
+        ? 'El total de la factura no es un número válido.'
+        : `${amountName} no es un número válido.`
+    case InvoiceIssueCode.UnrepresentableCents:
+      if (issue.field === '/total') {
+        return `El total de la factura ${amountLimitReason(invoice.totalAmount)}.`
+      }
+
+      if (!concept) {
+        return `${amountName} no se puede sumar al resumen.`
+      }
+
+      return `${amountName} no se suma porque ${amountLimitReason(concept.netAmount)}.`
+    case InvoiceIssueCode.MissingCurrency:
+      return missingCurrencyMessage
+    case InvoiceIssueCode.UnknownCurrency:
+      return unknownCurrencyMessage
+    case InvoiceIssueCode.MissingDescription:
+      return `El ${conceptName} no tiene descripción.`
+    case InvoiceIssueCode.InvalidUnicode:
+      return `No se pudo leer la descripción del ${conceptName}.`
+    case InvoiceIssueCode.UnresolvedInvoiceCategory:
+      return 'No se pudo elegir la categoría principal.'
+  }
 }
 
 export function conceptExclusionReasons(invoice: Invoice): Map<string, string> {
-  const amountIssues = new Map<string, string[]>()
-  const currencyIssues: string[] = []
-
-  for (const issue of invoice.issues) {
-    if (
-      issue.conceptId !== null &&
-      (issue.code === InvoiceIssueCode.InvalidAmount ||
-        issue.code === InvoiceIssueCode.UnrepresentableCents)
-    ) {
-      const reasons = amountIssues.get(issue.conceptId) ?? []
-
-      reasons.push(issueLabels[issue.code])
-      amountIssues.set(issue.conceptId, reasons)
-    } else if (
-      issue.conceptId === null &&
-      (issue.code === InvoiceIssueCode.MissingCurrency ||
-        issue.code === InvoiceIssueCode.UnknownCurrency)
-    ) {
-      currencyIssues.push(issueLabels[issue.code])
-    }
-  }
-
-  const inheritedCurrency =
-    invoice.currency.code === 'USD'
-      ? []
-      : currencyIssues.length
-        ? currencyIssues
-        : [
-            issueLabels[
-              invoice.currency.raw === null
-                ? InvoiceIssueCode.MissingCurrency
-                : InvoiceIssueCode.UnknownCurrency
-            ],
-          ]
   const excluded = new Map<string, string>()
 
   for (const concept of invoice.concepts) {
-    if (invoice.currency.code === 'USD' && concept.cents !== null) {
-      continue
-    }
+    const reasons: string[] = []
 
-    const reasons = [...inheritedCurrency]
-
-    if (concept.cents === null) {
+    if (invoice.currency.code !== 'USD') {
       reasons.push(
-        ...(amountIssues.get(concept.id) ?? [
-          issueLabels[
-            concept.netAmount.decimal === null
-              ? InvoiceIssueCode.InvalidAmount
-              : InvoiceIssueCode.UnrepresentableCents
-          ],
-        ]),
+        invoice.currency.raw === null
+          ? missingCurrencyMessage
+          : unknownCurrencyMessage,
       )
     }
 
-    excluded.set(concept.id, [...new Set(reasons)].join('. '))
+    if (concept.cents === null) {
+      if (concept.netAmount.decimal === null) {
+        reasons.push(
+          concept.netAmount.raw === null
+            ? 'Este concepto no se suma porque no tiene importe.'
+            : 'Este concepto no se suma porque su importe no es un número válido.',
+        )
+      } else {
+        reasons.push(
+          `Este importe no se suma porque ${amountLimitReason(concept.netAmount)}.`,
+        )
+      }
+    }
+
+    if (reasons.length) {
+      excluded.set(concept.id, reasons.join(' '))
+    }
   }
 
   return excluded

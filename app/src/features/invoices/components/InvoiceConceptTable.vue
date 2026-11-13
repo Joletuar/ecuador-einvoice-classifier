@@ -124,7 +124,7 @@ onBeforeUnmount(() => observer?.disconnect())
             <span
               v-if="exclusions.has(concept.id)"
               role="img"
-              :aria-label="`Concepto excluido de las sumas USD: ${exclusions.get(concept.id)}`"
+              :aria-label="exclusions.get(concept.id)"
               :title="exclusions.get(concept.id)"
               class="mr-1 inline-flex align-text-bottom text-warning"
             >
