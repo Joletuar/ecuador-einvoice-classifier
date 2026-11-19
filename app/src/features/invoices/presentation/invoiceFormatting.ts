@@ -69,7 +69,7 @@ export function conceptDescription(concept: Concept): string {
     return 'No disponible (descripción ausente)'
   }
 
-  if (concept.name === '') {
+  if (concept.name?.trim() === '') {
     return 'Descripción vacía'
   }
 

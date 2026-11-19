@@ -311,8 +311,7 @@ watch(
           class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-4 text-sm text-ink"
         >
           No pudimos confirmar el resultado de algunos archivos. Revisa su
-          estado antes de volver a procesarlos. No se reintentarán
-          automáticamente.
+          estado antes de volver a procesarlos.
         </p>
         <footer
           class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"

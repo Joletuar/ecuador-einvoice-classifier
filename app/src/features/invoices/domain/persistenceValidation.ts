@@ -6,6 +6,7 @@ import {
   RuleStatus,
   SelectionMode,
   canonicalCategories,
+  emptyDescriptionPredictionStatus,
   invoiceRulesVersion,
   type CanonicalCategory,
   type ConceptPrediction,
@@ -151,9 +152,29 @@ export function validatePrediction(value: unknown): value is ConceptPrediction {
   }
 
   return (
-    (value.status === 1 || value.status === 2) &&
+    (value.status === 1 ||
+      value.status === 2 ||
+      value.status === emptyDescriptionPredictionStatus) &&
     value.categoryIndex === -1 &&
     value.probabilities.every((p) => p === 0)
+  )
+}
+
+export function validatePredictionDescription(
+  descriptionPresent: unknown,
+  description: unknown,
+  prediction: ConceptPrediction,
+): boolean {
+  if (descriptionPresent === false) {
+    return description === null && prediction.status === 1
+  }
+
+  return (
+    descriptionPresent === true &&
+    text(description) &&
+    prediction.status !== 1 &&
+    (prediction.status !== emptyDescriptionPredictionStatus ||
+      description.trim() === '')
   )
 }
 
@@ -244,13 +265,10 @@ export function validateConceptRecord(value: unknown): value is ConceptRecord {
     return false
   }
 
-  return (
-    (value.descriptionPresent === false &&
-      value.description === null &&
-      value.prediction.status === 1) ||
-    (value.descriptionPresent === true &&
-      text(value.description) &&
-      (value.prediction.status === 0 || value.prediction.status === 2))
+  return validatePredictionDescription(
+    value.descriptionPresent,
+    value.description,
+    value.prediction,
   )
 }
 

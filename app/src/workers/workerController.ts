@@ -11,6 +11,7 @@ import {
   InvoiceIssueCode,
   RuleStatus,
   SelectionMode,
+  emptyDescriptionPredictionStatus,
 } from '../features/invoices/domain/classificationModel'
 import { SourceKind } from '../features/invoices/domain/persistenceRecords'
 import { classifyInvoice } from '../features/invoices/domain/invoiceRules'
@@ -33,7 +34,7 @@ import {
   type ProcessingLimits,
   type WorkControl,
 } from './processingLimits'
-import { readInvoiceXml } from './xmlInvoiceReader'
+import { readInvoiceXml, type ExtractedConcept } from './xmlInvoiceReader'
 import { readZipInvoices, type ZipReadState } from './zipInvoiceReader'
 import { countZipXml } from './zipContainer'
 import type {
@@ -104,6 +105,67 @@ export function createWorkerController(
       attemptId: request.attemptId,
     } as WorkerEvent)
 
+  async function classifyConcepts(
+    concepts: readonly [ExtractedConcept, ...ExtractedConcept[]],
+    batchSize: number,
+    control: WorkControl,
+  ): Promise<[ConceptRecord, ...ConceptRecord[]]> {
+    const modelInputs: ExtractedConcept[] = []
+    const records: ConceptRecord[] = []
+    const noPrediction = {
+      categoryIndex: -1,
+      probabilities: [0, 0, 0, 0, 0, 0, 0],
+    } as const
+
+    for (const concept of concepts) {
+      const { id, position, description, netAmount } = concept
+
+      if (description !== null && description.trim() !== '') {
+        modelInputs.push(concept)
+        continue
+      }
+
+      const base = {
+        id,
+        position,
+        netAmount,
+        selection: { mode: SelectionMode.Model },
+      }
+
+      records[position] =
+        description === null
+          ? {
+              ...base,
+              description,
+              descriptionPresent: false,
+              prediction: { ...noPrediction, status: 1 },
+            }
+          : {
+              ...base,
+              description,
+              descriptionPresent: true,
+              prediction: {
+                ...noPrediction,
+                status: emptyDescriptionPredictionStatus,
+              },
+            }
+    }
+
+    if (modelInputs.length > 0) {
+      const classified = await classifier.classify(
+        modelInputs,
+        batchSize,
+        control,
+      )
+
+      for (const record of classified) {
+        records[record.position] = record
+      }
+    }
+
+    return records as [ConceptRecord, ...ConceptRecord[]]
+  }
+
   async function entryResult(
     source: WorkerSource,
     entry: EntryIdentity,
@@ -121,11 +183,11 @@ export function createWorkerController(
 
       onStage(WorkerStage.Model)
 
-      const concepts = (await classifier.classify(
+      const concepts = await classifyConcepts(
         parsed.concepts,
         limits.batchSize,
         control,
-      )) as [ConceptRecord, ...ConceptRecord[]]
+      )
 
       const evaluation = classifyInvoice(
         concepts,

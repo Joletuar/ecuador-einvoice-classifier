@@ -93,6 +93,109 @@ describe('real Worker controller contracts', () => {
     ).toEqual(['read', 'xml', 'model', 'awaiting_commit'])
   })
 
+  it('classifies only descriptions with text and retains all original lines in order', async () => {
+    const { controller, classifier, events } = setup()
+    const xml = directXml(
+      [
+        '<detalle><precioTotalSinImpuesto>1.00</precioTotalSinImpuesto></detalle>',
+        '<detalle><descripcion/><precioTotalSinImpuesto>2.00</precioTotalSinImpuesto></detalle>',
+        '<detalle><descripcion>  ARROZ &amp; café  </descripcion><precioTotalSinImpuesto>3.00</precioTotalSinImpuesto></detalle>',
+        '<detalle><descripcion> &#9;&#10;&#160; </descripcion><precioTotalSinImpuesto>4.00</precioTotalSinImpuesto></detalle>',
+      ].join(''),
+    )
+
+    await controller.handle(processRequest(new File([xml], 'mixed.xml')))
+
+    expect(classifier.classify).toHaveBeenCalledTimes(1)
+    expect(classifier.classify.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ position: 2, description: '  ARROZ & café  ' }),
+    ])
+
+    const result = events.find(
+      (event) => event.type === 'invoice_result',
+    )?.result
+
+    if (!result?.ok) {
+      throw new Error('Expected the mixed invoice to be saved.')
+    }
+
+    expect(
+      result.invoice.concepts.map((concept) => ({
+        position: concept.position,
+        description: concept.description,
+        present: concept.descriptionPresent,
+        amount: concept.netAmount.raw,
+        status: concept.prediction.status,
+      })),
+    ).toEqual([
+      {
+        position: 0,
+        description: null,
+        present: false,
+        amount: '1.00',
+        status: 1,
+      },
+      {
+        position: 1,
+        description: '',
+        present: true,
+        amount: '2.00',
+        status: 'empty_description',
+      },
+      {
+        position: 2,
+        description: '  ARROZ & café  ',
+        present: true,
+        amount: '3.00',
+        status: 0,
+      },
+      {
+        position: 3,
+        description: ' \t\n\u00a0 ',
+        present: true,
+        amount: '4.00',
+        status: 'empty_description',
+      },
+    ])
+    expect(result.invoice.classification.automatic).toMatchObject({
+      category: 'Alimentación',
+      status: 'provisional',
+    })
+  })
+
+  it('retains an all-blank invoice with the main category unassigned without calling the model', async () => {
+    const { controller, classifier, events } = setup()
+    const xml = directXml(
+      '<detalle><descripcion>&#160;</descripcion><precioTotalSinImpuesto>1.00</precioTotalSinImpuesto></detalle>',
+    )
+
+    await controller.handle(processRequest(new File([xml], 'blank.xml')))
+
+    expect(classifier.classify).not.toHaveBeenCalled()
+
+    const result = events.find(
+      (event) => event.type === 'invoice_result',
+    )?.result
+
+    expect(result).toMatchObject({
+      ok: false,
+      available: {
+        kind: 'invoice',
+        invoice: {
+          classification: {
+            automatic: { category: null, status: 'unassigned' },
+          },
+          concepts: [{ prediction: { status: 'empty_description' } }],
+        },
+      },
+    })
+    expect(
+      events.find((event) => event.type === 'source_result'),
+    ).toMatchObject({
+      counts: { savedXml: 1 },
+    })
+  })
+
   it('keeps corrupt XML independent of valid ZIP siblings and honors exclusions after recreation', async () => {
     const zip = new File(
       [

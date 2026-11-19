@@ -23,6 +23,8 @@ import {
   validatePersistenceSnapshot,
 } from '../src/features/invoices/domain/persistenceValidation'
 import { amountToCents } from '../src/features/invoices/domain/invoiceProjection'
+import { totals } from '../src/features/invoices/domain/invoiceDomain'
+import { classifyInvoice } from '../src/features/invoices/domain/invoiceRules'
 import {
   storageConcept,
   storageInvoice,
@@ -990,6 +992,116 @@ describe('sessions and projection', () => {
       descriptionPresent: false,
       category: 'Sin clasificar',
       prediction,
+    })
+  })
+
+  it('preserves a skipped blank prediction when correcting and restoring its category', async () => {
+    const service = adapter()
+    const modelPackage = storagePackage()
+    const source = storageSource()
+    const prediction = {
+      status: 'empty_description',
+      categoryIndex: -1,
+      probabilities: [0, 0, 0, 0, 0, 0, 0],
+    } as const
+    const concept = {
+      ...storageConcept(),
+      description: ' \t\u00a0 ',
+      prediction,
+    }
+    const automatic = classifyInvoice([concept], modelPackage.classes).result
+    const invoice = storageInvoice(source, modelPackage, {
+      concepts: [concept],
+      classification: {
+        initial: automatic,
+        automatic,
+        selection: { mode: 'automatic' },
+      },
+    })
+
+    expect((await append(service, { source, modelPackage, invoice })).ok).toBe(
+      true,
+    )
+
+    const before = (await read(service)).invoices
+
+    expect(before[0]).toMatchObject({
+      principal: 'Sin clasificar',
+      total: 1234,
+      automatic: { status: 'unassigned' },
+      concepts: [
+        { name: ' \t\u00a0 ', category: 'Sin clasificar', prediction },
+      ],
+    })
+    expect(totals(before)).toEqual({ 'Sin clasificar': 1234 })
+
+    const target = { invoiceId: invoice.id, conceptId: concept.id }
+
+    expect(
+      (
+        await service.correct({
+          ...target,
+          selection: { mode: 'manual', category: 'Salud' },
+        })
+      ).ok,
+    ).toBe(true)
+
+    const corrected = (await read(service)).invoices
+
+    expect(corrected[0]).toMatchObject({
+      principal: 'Salud',
+      total: 1234,
+      automatic: { status: 'resolved' },
+      concepts: [{ category: 'Salud', selectionMode: 'manual', prediction }],
+    })
+    expect(totals(corrected)).toEqual({ Salud: 1234 })
+
+    expect(
+      (await service.correct({ ...target, selection: { mode: 'model' } })).ok,
+    ).toBe(true)
+
+    const restored = (await read(service)).invoices
+
+    expect(restored[0]).toMatchObject({
+      principal: 'Sin clasificar',
+      total: 1234,
+      automatic: { status: 'unassigned' },
+      concepts: [
+        { category: 'Sin clasificar', selectionMode: 'model', prediction },
+      ],
+    })
+    expect(totals(restored)).toEqual({ 'Sin clasificar': 1234 })
+  })
+
+  it('loads an existing successful prediction and manual correction for an empty description', async () => {
+    const name = databaseName()
+    const service = adapter({ databaseName: name })
+    const previous = storageConcept()
+    const invoice = storageInvoice(undefined, undefined, {
+      concepts: [{ ...previous, description: '' }],
+    })
+
+    expect((await append(service, payload({ invoice }))).ok).toBe(true)
+    expect(
+      (
+        await service.correct({
+          invoiceId: invoice.id,
+          conceptId: previous.id,
+          selection: { mode: 'manual', category: 'Vivienda' },
+        })
+      ).ok,
+    ).toBe(true)
+
+    service.dispose?.()
+
+    const reopened = adapter({ databaseName: name })
+
+    expect((await read(reopened)).invoices[0]?.concepts[0]).toMatchObject({
+      name: '',
+      original: 'Salud',
+      category: 'Vivienda',
+      selectionMode: 'manual',
+      prediction: previous.prediction,
     })
   })
 

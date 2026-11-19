@@ -255,12 +255,17 @@ describe('canonical invoice presentation', () => {
   it('distinguishes absent and empty descriptions without changing their values', () => {
     const absent = conceptFixture({ name: null, descriptionPresent: false })
     const empty = conceptFixture({ name: '' })
+    const whitespace = conceptFixture({ name: ' \t\n\u00a0 ' })
+    const text = conceptFixture({ name: '  arroz\u00a0integral  ' })
 
     expect(conceptDescription(absent)).toBe(
       'No disponible (descripción ausente)',
     )
     expect(conceptDescription(empty)).toBe('Descripción vacía')
+    expect(conceptDescription(whitespace)).toBe('Descripción vacía')
+    expect(conceptDescription(text)).toBe('  arroz\u00a0integral  ')
     expect(absent.name).toBeNull()
     expect(empty.name).toBe('')
+    expect(whitespace.name).toBe(' \t\n\u00a0 ')
   })
 })

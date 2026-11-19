@@ -11,6 +11,7 @@ import {
   validateExactAmount,
   validateIssue,
   validatePrediction,
+  validatePredictionDescription,
   validateRuleResult,
 } from './persistenceValidation'
 
@@ -44,12 +45,11 @@ function validateConcept(value: unknown): value is Concept {
       value.selectionMode === SelectionMode.Manual) &&
     validateExactAmount(value.netAmount) &&
     validatePrediction(value.prediction) &&
-    ((value.descriptionPresent === false &&
-      value.name === null &&
-      value.prediction.status === 1) ||
-      (value.descriptionPresent === true &&
-        typeof value.name === 'string' &&
-        value.prediction.status !== 1))
+    validatePredictionDescription(
+      value.descriptionPresent,
+      value.name,
+      value.prediction,
+    )
   )
 }
 

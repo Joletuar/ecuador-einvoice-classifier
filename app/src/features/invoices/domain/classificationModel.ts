@@ -106,8 +106,10 @@ export interface SuccessfulPrediction {
   readonly probabilities: SevenProbabilities
 }
 
+export const emptyDescriptionPredictionStatus = 'empty_description'
+
 export interface FailedPrediction {
-  readonly status: 1 | 2
+  readonly status: 1 | 2 | typeof emptyDescriptionPredictionStatus
   readonly categoryIndex: -1
   readonly probabilities: readonly [0, 0, 0, 0, 0, 0, 0]
 }
@@ -156,7 +158,10 @@ export type ConceptRecord = ConceptFields &
         readonly descriptionPresent: true
         readonly description: string
         readonly prediction:
-          SuccessfulPrediction | (FailedPrediction & { readonly status: 2 })
+          | SuccessfulPrediction
+          | (FailedPrediction & {
+              readonly status: 2 | typeof emptyDescriptionPredictionStatus
+            })
       }
   )
 

@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertCircle, CheckCircle, Clock3, Copy, File } from 'lucide-vue-next'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Clock3,
+  Copy,
+  File,
+} from 'lucide-vue-next'
 
 import { fileResultMessage } from '../presentation/processingMessages'
 import { FileResultStatus } from '../model/processingStatus'
@@ -20,9 +27,12 @@ const {
   summary?: ProcessingSummary | null
 }>()
 const open = defineModel<boolean>('open', { default: false })
-const visibleResults = computed(() =>
-  results.filter((result) => result.status !== FileResultStatus.Pending),
-)
+
+const warningAppearance = {
+  classes: 'border-warning/30 bg-warning-soft text-warning',
+  rowClasses: 'border-l-warning/50 bg-warning/5',
+  iconClasses: 'text-warning',
+}
 
 const visual = {
   [FileResultStatus.Added]: {
@@ -33,10 +43,8 @@ const visual = {
     icon: CheckCircle,
   },
   [FileResultStatus.Duplicate]: {
+    ...warningAppearance,
     label: 'Duplicado',
-    classes: 'border-warning/30 bg-warning-soft text-warning',
-    rowClasses: 'border-l-warning/50 bg-warning/5',
-    iconClasses: 'text-warning',
     icon: Copy,
   },
   [FileResultStatus.Error]: {
@@ -54,6 +62,24 @@ const visual = {
     icon: Clock3,
   },
 }
+
+const withIncidents = {
+  ...warningAppearance,
+  label: 'Con incidencias',
+  icon: AlertTriangle,
+}
+
+const visibleResults = computed(() =>
+  results
+    .filter((result) => result.status !== FileResultStatus.Pending)
+    .map((result) => ({
+      ...result,
+      appearance:
+        result.status === FileResultStatus.Added && result.issues?.length
+          ? withIncidents
+          : visual[result.status],
+    })),
+)
 </script>
 
 <template>
@@ -115,11 +141,11 @@ const visual = {
         :key="`${attemptId}:${result.id}`"
         :data-row-key="`${attemptId}:${result.id}`"
         class="grid min-h-[var(--file-list-row-height)] grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 border-l-2 px-4 py-2 sm:grid-cols-[1.5rem_minmax(0,1fr)_8.5rem]"
-        :class="visual[result.status].rowClasses"
+        :class="result.appearance.rowClasses"
       >
         <span
           class="col-start-1 row-span-2 row-start-1 grid size-6 place-items-center sm:row-span-1"
-          :class="visual[result.status].iconClasses"
+          :class="result.appearance.iconClasses"
         >
           <File
             class="size-6"
@@ -145,18 +171,14 @@ const visual = {
         </div>
         <span
           class="col-start-2 row-start-2 mt-1 inline-flex items-center justify-self-start gap-1.5 rounded-md border px-2 py-1 text-xs font-medium sm:col-start-3 sm:row-start-1 sm:mt-0 sm:justify-self-end"
-          :class="visual[result.status].classes"
+          :class="result.appearance.classes"
         >
           <component
-            :is="visual[result.status].icon"
+            :is="result.appearance.icon"
             :size="12"
             aria-hidden="true"
           />
-          {{
-            result.issues?.length && result.status === FileResultStatus.Added
-              ? 'Con incidencias'
-              : visual[result.status].label
-          }}
+          {{ result.appearance.label }}
         </span>
       </li>
     </ul>

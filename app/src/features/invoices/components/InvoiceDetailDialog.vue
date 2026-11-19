@@ -119,7 +119,7 @@ function requestClose(event: Event) {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-40 bg-ink/35 backdrop-blur-sm" />
       <DialogContent
-        class="fixed top-1/2 left-1/2 z-50 grid max-h-[90dvh] w-[min(94vw,1050px)] -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-[0_16px_48px_rgb(24_36_56/18%)] [scrollbar-width:thin] [scrollbar-color:#a8b5c4_transparent] sm:p-8"
+        class="fixed top-1/2 left-1/2 z-50 grid max-h-[90dvh] w-[min(94vw,1050px)] -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-[0_16px_48px_rgb(24_36_56/18%)] scrollbar-thin [scrollbar-color:#a8b5c4_transparent] sm:p-8"
         @pointer-down-outside="requestClose"
         @interact-outside.prevent
         @escape-key-down="requestClose"

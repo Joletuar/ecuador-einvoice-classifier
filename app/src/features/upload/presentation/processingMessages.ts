@@ -194,7 +194,7 @@ function problemMessage(result: FileProcessingResult): string {
 
   if (result.status === FileResultStatus.Added) {
     if (!isZip && primary === 'classification') {
-      return 'La factura se guardó, pero no se pudo determinar su categoría.'
+      return 'La factura se procesó pero no tiene categoría asignada.'
     }
 
     return `Se guardaron algunas facturas, pero ${problem.partial}.`
