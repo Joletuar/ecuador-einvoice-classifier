@@ -204,6 +204,45 @@ describe('access key through real XML/ZIP processing and canonical storage', () 
     expect(await read(secondConnection)).toEqual(corrected)
   })
 
+  it('reports a repeated invoice without a main category as duplicate', async () => {
+    const s = setup()
+    const filename = 'sin-categoria.xml'
+    const invoice = xml('sin-categoria').replace(
+      /<descripcion>.*?<\/descripcion>/,
+      '<descripcion>   </descripcion>',
+    )
+
+    await s.service.prepare()
+
+    const first = await s.process([new File([invoice], filename)])
+
+    expect(first).toMatchObject({
+      ok: true,
+      value: {
+        summary: { saved: 1, duplicates: 0 },
+        files: [
+          {
+            status: 'added',
+            issues: [expect.stringContaining('NO_CLASSIFIED_CONCEPTS')],
+          },
+        ],
+      },
+    })
+
+    const stored = await read(s.invoices)
+
+    const repeated = await s.process([new File([invoice], filename)])
+
+    expect(repeated).toMatchObject({
+      ok: true,
+      value: {
+        summary: { saved: 0, duplicates: 1, failed: 0 },
+        files: [{ status: 'duplicate', issues: [] }],
+      },
+    })
+    expect(await read(s.invoices)).toEqual(stored)
+  })
+
   it('saves only new invoices in mixed ZIPs and counts every repeated XML without reporting duplicates as failures', async () => {
     const s = setup()
 

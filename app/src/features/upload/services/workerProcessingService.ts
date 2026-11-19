@@ -407,20 +407,30 @@ export function createWorkerProcessingService(options: {
                   ? event.result.available.invoice
                   : null
 
-              if (!event.result.ok) {
-                const issue = `${event.entry.entryPath ?? context.file.name}: ${event.result.error.code}: ${event.result.error.message}`
+              const processingError = event.result.ok
+                ? null
+                : event.result.error
+              const recordIssue = () => {
+                if (!processingError) {
+                  return
+                }
+
+                const name = event.entry.entryPath ?? context.file.name
+                const issue = `${name}: ${processingError.code}: ${processingError.message}`
 
                 result.issues.add(issue)
 
-                if (!event.result.error.retryable) {
+                if (!processingError.retryable) {
                   context.permanentIssues.add(issue)
                 }
               }
 
               if (!invoice) {
-                const error = !event.result.ok
-                  ? event.result.error
-                  : writeError('No se recibieron datos de factura.')
+                recordIssue()
+
+                const error =
+                  processingError ??
+                  writeError('No se recibieron datos de factura.')
 
                 if (!error.retryable) {
                   context.settled.set(event.entry.entryIndex, {
@@ -438,12 +448,22 @@ export function createWorkerProcessingService(options: {
                 return { status: CommitStatus.Rejected, error }
               }
 
+              let duplicate = false
+
               try {
                 const committed = await session.commit({
                   source: context.source,
                   modelPackage: options.pack.modelPackage,
                   invoice,
                 })
+
+                duplicate =
+                  committed.ok &&
+                  committed.value.status === CommitStatus.Duplicate
+
+                if (!duplicate) {
+                  recordIssue()
+                }
 
                 if (!committed.ok) {
                   result.issues.add(committed.message)
@@ -457,14 +477,13 @@ export function createWorkerProcessingService(options: {
                 context.settled.set(event.entry.entryIndex, {
                   entryIndex: event.entry.entryIndex,
                   entryPath: event.entry.entryPath,
-                  status:
-                    committed.value.status === CommitStatus.Duplicate
-                      ? SourceEntryStatus.Duplicate
-                      : SourceEntryStatus.Saved,
+                  status: duplicate
+                    ? SourceEntryStatus.Duplicate
+                    : SourceEntryStatus.Saved,
                   invoiceId: committed.value.invoice.id,
                 })
 
-                if (committed.value.status === CommitStatus.Duplicate) {
+                if (duplicate) {
                   result.duplicates.set(
                     event.entry.entryIndex,
                     committed.value.invoice.id,
@@ -489,6 +508,10 @@ export function createWorkerProcessingService(options: {
                   revision: committed.value.revision,
                 }
               } catch (error) {
+                if (!duplicate) {
+                  recordIssue()
+                }
+
                 result.issues.add(
                   error instanceof Error
                     ? error.message
