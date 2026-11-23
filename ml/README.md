@@ -11,7 +11,7 @@ Desde la raíz del proyecto `ecuador-einvoice-classifier/`, ejecuta los siguient
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install pandas pyarrow lxml numpy matplotlib seaborn scipy scikit-learn threadpoolctl joblib
+python -m pip install jupyter pandas pyarrow lxml numpy matplotlib seaborn scipy scikit-learn threadpoolctl joblib
 python -m pip install spacy torch transformers onnx cmake ninja
 python -m spacy download es_core_news_sm
 ```
@@ -19,6 +19,8 @@ python -m spacy download es_core_news_sm
 El análisis exploratorio utiliza spaCy, PyTorch y Transformers, además del modelo `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
 
 Para evitar problemas con las rutas, mantén el directorio de trabajo de Jupyter en la raíz del proyecto, `ml/` o `ml/notebooks/`, especialmente durante la exportación del modelo.
+
+Por ejemplo, desde la raíz del proyecto y con el entorno activado, inicia `jupyter notebook` y abre los notebooks en `ml/notebooks/`.
 
 ## Orden de ejecución
 
